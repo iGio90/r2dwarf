@@ -9,10 +9,14 @@ class R2Dwarf:
         self.pipe = r2pipe.open("frida://attach/usb//%d" % pid)
         self.console = DwarfConsoleWidget(dwarf._app_window, input_placeholder='r2', completer=False)
         self.console.onCommandExecute.connect(self.on_r2_command)
-        self.dwarf._app_window.console.qtabs.addTab(self.console, 'r2')
+        self.dwarf._app_window.main_tabs.addTab(self.console, 'r2')
+
+        self.pipe.cmd(".\\i*")
 
     def on_r2_command(self, cmd):
-        self.console.log(self.pipe.cmd(cmd), time_prefix=False)
+        result = self.pipe.cmd(cmd)
+
+        self.console.log(result, time_prefix=False)
 
 
 r2 = None
