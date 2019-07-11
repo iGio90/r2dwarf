@@ -94,10 +94,11 @@ class R2DwarfPlugin(DwarfPlugin):
         self.console.onCommandExecute.connect(self.on_r2_command)
         self._main_app.main_tabs.addTab(self.console, 'r2')
 
-        self._main_app.dwarf.onReceiveCmd.connect(self._onReceiveCmd)
-        self._main_app.dwarf.onScriptLoaded.connect(self._onScriptLoaded)
+        self._main_app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
+        self._main_app.dwarf.onScriptLoaded.connect(self._on_script_loaded)
+        self._main_app.dwarf.onApplyContext.connect(self._on_apply_context)
 
-    def _onReceiveCmd(self, args):
+    def _on_receive_cmd(self, args):
         message, data = args
         if 'payload' in message:
             payload = message['payload']
@@ -105,7 +106,7 @@ class R2DwarfPlugin(DwarfPlugin):
                 cmd = message['payload'][3:]
                 self.on_r2_command(cmd)
 
-    def _onScriptLoaded(self):
+    def _on_script_loaded(self):
         self.pipe.open('frida://attach/usb//%d' % self._main_app.dwarf.pid)
         self.pipe.cmd("e scr.color=2; e scr.html=1;")
 
@@ -119,6 +120,16 @@ class R2DwarfPlugin(DwarfPlugin):
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
             agent = f.read()
         self._main_app.dwarf.dwarf_api('evaluate', agent)
+
+    def _on_apply_context(self, context_data):
+        is_java = 'is_java' in context_data and context_data['is_java']
+
+        if not is_java:
+            if 'context' in context_data:
+                native_context = context_data['context']
+                pc = native_context['pc']['value']
+
+                self.pipe.cmd('s %s' % pc)
 
     def on_r2_command(self, cmd):
         result = self.pipe.cmd(cmd)
