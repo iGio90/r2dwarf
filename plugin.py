@@ -93,7 +93,17 @@ class R2DwarfPlugin(DwarfPlugin):
         self.console = DwarfConsoleWidget(self._main_app, input_placeholder='r2', completer=False)
         self.console.onCommandExecute.connect(self.on_r2_command)
         self._main_app.main_tabs.addTab(self.console, 'r2')
+
+        self._main_app.dwarf.onReceiveCmd.connect(self._onReceiveCmd)
         self._main_app.dwarf.onScriptLoaded.connect(self._onScriptLoaded)
+
+    def _onReceiveCmd(self, args):
+        message, data = args
+        if 'payload' in message:
+            payload = message['payload']
+            if payload.startswith('r2 '):
+                cmd = message['payload'][3:]
+                self.on_r2_command(cmd)
 
     def _onScriptLoaded(self):
         self.pipe.open('frida://attach/usb//%d' % self._main_app.dwarf.pid)
@@ -105,6 +115,10 @@ class R2DwarfPlugin(DwarfPlugin):
 
         self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
             r2arch, self._main_app.dwarf.pointer_size * 8, self._main_app.dwarf.platform))
+
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
+            agent = f.read()
+        self._main_app.dwarf.dwarf_api('evaluate', agent)
 
     def on_r2_command(self, cmd):
         result = self.pipe.cmd(cmd)
