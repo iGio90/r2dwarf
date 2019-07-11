@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 from subprocess import *
 from threading import Thread
