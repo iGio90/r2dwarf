@@ -44,19 +44,15 @@ class R2Pipe(QObject):
             return
         cmd = cmd.strip().replace("\n", ";")
         self.process.stdin.write((cmd + '\n').encode('utf8'))
-        stdout = self.process.stdout
-        nonblocking = True
         self.process.stdin.flush()
+
         output = b''
         wait_max = 1000
         while True:
-            if nonblocking:
-                try:
-                    result = stdout.read(4096)
-                except:
-                    continue
-            else:
-                result = stdout.read(1)
+            try:
+                result = self.process.stdout.read(4096)
+            except:
+                continue
             if result:
                 if result.endswith(b'\0'):
                     output += result[:-1]
@@ -64,11 +60,10 @@ class R2Pipe(QObject):
 
                 output += result
             else:
-                if nonblocking:
-                    wait_max -= 1
-                    time.sleep(0.001)
-                    if not wait_max:
-                        break
+                wait_max -= 1
+                time.sleep(0.001)
+                if not wait_max:
+                    break
 
         return output.decode('utf-8', errors='ignore')
 
@@ -78,21 +73,21 @@ class R2DwarfPlugin(DwarfPlugin):
     def __init__(self, app):
         self._main_app = app
         self.pipe = R2Pipe()
-        #! required
+        # ! required
         # plugininfo
         self.name = 'r2dwarf'
         self.description = 'r2frida in Dwarf'
         self.version = '1.0.0'
-        self.author = 'iGio'
+        self.author = 'iGio90'
         self.homepage = 'https://github.com/iGio90/Dwarf'
         self.license = 'https://www.gnu.org/licenses/gpl-3.0'
         #
         self.supported_sessions = ['android', 'local', 'remote']
         self.supported_arch = ['ia32', 'x64', 'arm', 'arm64']
         self.supported_platforms = ['windows', 'darwin', 'linux']
-        #! end required
+        # ! end required
 
-    def on_session_started(self, app): # TODO: remove app from there
+    def on_session_started(self, app):  # TODO: remove app from there
         """ This function gets executed when Session is started
         """
         self.console = DwarfConsoleWidget(self._main_app, input_placeholder='r2', completer=False)
@@ -100,15 +95,17 @@ class R2DwarfPlugin(DwarfPlugin):
         self._main_app.main_tabs.addTab(self.console, 'r2')
         self._main_app.dwarf.onScriptLoaded.connect(self._onScriptLoaded)
 
-    def start_async(self):
-        def init_cmds():
-            self.pipe.cmd(".\\i*")
-        Thread(target=init_cmds).start()
-
     def _onScriptLoaded(self):
         self.pipe.open('frida://attach/usb//%d' % self._main_app.dwarf.pid)
+        self.pipe.cmd("e scr.color=2; e scr.html=1;")
+
+        r2arch = self._main_app.dwarf.arch
+        if r2arch == 'arm64':
+            r2arch = 'arm'
+
+        self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
+            r2arch, self._main_app.dwarf.pointer_size * 8, self._main_app.dwarf.platform))
 
     def on_r2_command(self, cmd):
         result = self.pipe.cmd(cmd)
-
         self.console.log(result, time_prefix=False)
