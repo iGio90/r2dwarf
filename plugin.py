@@ -181,6 +181,7 @@ class Plugin:
         self.pipe = None
         self.progress_dialog = None
         self.current_seek = ''
+        self.with_decompiler = False
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
@@ -188,6 +189,12 @@ class Plugin:
     def _create_pipe(self):
         self.pipe = R2Pipe()
         self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
+        r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
+        r2_decompilers = r2_decompilers.split()
+        if r2_decompilers and 'pdc' in r2_decompilers:
+            self.pipe.cmd('e cmd.pdc=pdc') # TODO: let select decompiler
+            self.with_decompiler = True
+
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
 
         r2arch = self.app.dwarf.arch
@@ -319,12 +326,8 @@ class Plugin:
 
             r2_menu = QMenu('r2')
             r2_menu.addAction('graph view', self.show_graph_view)
-
-            r2dec = r2_menu.addAction('decompile', self.show_decompiler_view)
-            r2dec.setEnabled(False)
-            pdd = self.pipe.cmd('pdd --help')
-            if pdd.startswith:
-                r2dec.setEnabled(True)
+            if self.with_decompiler:
+                r2dec = r2_menu.addAction('decompile', self.show_decompiler_view)
 
             self.decompiler_view.disasm_view.menu_extra_menu.append(r2_menu)
 
@@ -342,6 +345,9 @@ class Plugin:
         self.r2graph.start()
 
     def show_decompiler_view(self):
+        if not self.with_decompiler:
+            return
+
         self.r2_decompiler_view = QPlainTextEdit()
         self.r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
