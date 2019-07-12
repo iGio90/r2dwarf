@@ -4,26 +4,42 @@ import time
 from subprocess import *
 
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from PyQt5.QtWidgets import QPlainTextEdit, QSizePolicy, QScrollBar, QSplitter, QScrollArea
+from PyQt5.QtWidgets import QSizePolicy, QSplitter, QScrollArea, QScroller, QFrame, QLabel, QLineEdit, QPlainTextEdit, \
+    QScrollBar, QAction, QMenu
 
 from ui.widget_console import DwarfConsoleWidget
 
 from lib import utils
 
-from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QSize
 
 from ui.widgets.list_view import DwarfListView
 
 
-class R2TextEdit(QPlainTextEdit):
+class R2ScrollArea(QScrollArea):
     def __init__(self, *__args):
         super().__init__(*__args)
-        self.setReadOnly(True)
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setLineWrapMode(QPlainTextEdit.NoWrap)
-        #self.setEnabled(False)
+        self.setFrameStyle(QFrame.NoFrame)
+        self.setFrameShadow(QFrame.Plain)
+        self.viewport().setAttribute(Qt.WA_AcceptTouchEvents)
+        QScroller.grabGesture(self.viewport(), QScroller.LeftMouseButtonGesture)
+        self.setWidgetResizable(True)
+
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+
+        self.setWidget(self.label)
+
+    def sizeHint(self):
+        return QSize(200, 200)
+
+    def setText(self, text):
+        self.label.setText(text)
 
 
 class R2Analysis(QThread):
@@ -32,24 +48,40 @@ class R2Analysis(QThread):
     def __init__(self, pipe):
         super(R2Analysis, self).__init__()
         self._pipe = pipe
-        self.decompile = False
 
     def run(self):
         self._pipe.cmd('aF')
-
-        graph = self._pipe.cmd('agf')
         function_info = self._pipe.cmdj('afij')
         if len(function_info) > 0:
             function_info = function_info[0]
 
-        decompile_data = None
-        if self.decompile:
-            decompile_data = self._pipe.cmd('pddo')
+        self.onR2AnalysisFinished.emit([function_info])
 
-        self.onR2AnalysisFinished.emit([function_info, graph, decompile_data])
 
-    def start(self, priority=QThread.HighPriority):
-        return super().start(priority=priority)
+class R2Graph(QThread):
+    onR2Graph = pyqtSignal(list, name='onR2Graph')
+
+    def __init__(self, pipe):
+        super(R2Graph, self).__init__()
+        self._pipe = pipe
+        self.decompile = False
+
+    def run(self):
+        graph = self._pipe.cmd('agf')
+        self.onR2Graph.emit([graph])
+
+
+class R2Decompiler(QThread):
+    onR2Decompiler = pyqtSignal(list, name='onR2Decompiler')
+
+    def __init__(self, pipe):
+        super(R2Decompiler, self).__init__()
+        self._pipe = pipe
+        self.decompile = False
+
+    def run(self):
+        decompile_data = self._pipe.cmd('pddo')
+        self.onR2Decompiler.emit([decompile_data])
 
 
 class R2Pipe(QObject):
@@ -131,9 +163,8 @@ class Plugin:
     def __init__(self, app):
         self.app = app
         self.pipe = None
-        self.analysis_progress_dialog = None
+        self.progress_dialog = None
         self.current_seek = ''
-        self.have_r2dec = False
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
@@ -141,7 +172,7 @@ class Plugin:
     def _create_pipe(self):
         self.pipe = R2Pipe()
         self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
-        self.pipe.cmd("e scr.color=2; e scr.html=1")
+        self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
 
         r2arch = self.app.dwarf.arch
         if r2arch == 'arm64':
@@ -169,43 +200,46 @@ class Plugin:
             self.current_seek = ptr
             self.pipe.cmd('s %s' % self.current_seek)
 
-        self.analysis_progress_dialog = utils.progress_dialog('running r2 analysis...')
-        self.analysis_progress_dialog.forceShow()
+        self.progress_dialog = utils.progress_dialog('running r2 analysis...')
+        self.progress_dialog.forceShow()
 
-        r2analysis = R2Analysis(self.pipe)
-        r2analysis.decompile = self.have_r2dec
-        r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
-        r2analysis.start()
+        self.r2analysis = R2Analysis(self.pipe)
+        self.r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
+        self.r2analysis.start()
 
     def _on_finish_analysis(self, data):
-        self.analysis_progress_dialog.cancel()
+        self.progress_dialog.cancel()
 
         function_info = data[0]
-        graph_data = data[1]
-        decompile_data = data[2]
 
-        self.r2_graph_view.appendHtml('<pre>' + graph_data + '</pre>')
-        self.r2_graph_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
+        if 'callrefs' in function_info:
+            for ref in function_info['callrefs']:
+                self.call_refs_model.appendRow([
+                    QStandardItem(hex(ref['addr'])),
+                    QStandardItem(hex(ref['at'])),
+                    QStandardItem(ref['type'])
+                ])
+        if 'codexrefs' in function_info:
+            for ref in function_info['codexrefs']:
+                self.code_xrefs_model.appendRow([
+                    QStandardItem(hex(ref['addr'])),
+                    QStandardItem(hex(ref['at'])),
+                    QStandardItem(ref['type'])
+                ])
 
+    def _on_finish_graph(self, data):
+        self.progress_dialog.cancel()
+        graph_data = data[0]
+        self.r2_graph_view.setText('<pre>' + graph_data + '</pre>')
+
+    def _on_finish_decompiler(self, data):
+        self.progress_dialog.cancel()
+        decompile_data = data[0]
         if decompile_data is not None:
-
+            self.r2_decompiler_view.clear()
             self.r2_decompiler_view.appendHtml(
                 '<p>' + decompile_data + '</pre>')
             self.r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
-
-        for ref in function_info['callrefs']:
-            self.call_refs_model.appendRow([
-                QStandardItem(hex(ref['addr'])),
-                QStandardItem(hex(ref['at'])),
-                QStandardItem(ref['type'])
-            ])
-
-        for ref in function_info['codexrefs']:
-            self.code_xrefs_model.appendRow([
-                QStandardItem(hex(ref['addr'])),
-                QStandardItem(hex(ref['at'])),
-                QStandardItem(ref['type'])
-            ])
 
     def _on_receive_cmd(self, args):
         message, data = args
@@ -228,7 +262,8 @@ class Plugin:
 
     def _on_ui_element_created(self, elem, widget):
         if elem == 'disassembly':
-            widget.onDisassemble.connect(self._on_disassemble)
+            self.decompiler_view = widget
+            self.decompiler_view.onDisassemble.connect(self._on_disassemble)
 
             r2_info = QSplitter()
             r2_info.setOrientation(Qt.Vertical)
@@ -250,28 +285,48 @@ class Plugin:
             r2_info.addWidget(call_refs)
             r2_info.addWidget(code_xrefs)
 
-            r2_graph_container = QScrollArea()
-            r2_graph_container.setWidgetResizable(True)
-            self.r2_graph_view = R2TextEdit()
-            r2_graph_container.setWidget(self.r2_graph_view)
+            self.decompiler_view.insertWidget(0, r2_info)
+            self.decompiler_view.setStretchFactor(0, 1)
+            self.decompiler_view.setStretchFactor(1, 5)
 
-            widget.insertWidget(0, r2_info)
-            widget.addWidget(r2_graph_container)
+            r2_menu = QMenu('r2')
+            r2_menu.addAction('graph view', self.show_graph_view)
 
-            widget.setStretchFactor(0, 2)
-            widget.setStretchFactor(1, 5)
-            widget.setStretchFactor(2, 5)
-
+            r2dec = r2_menu.addAction('decompile', self.show_decompiler_view)
+            r2dec.setEnabled(False)
             pdd = self.pipe.cmd('pdd --help')
             if pdd.startswith:
-                self.have_r2dec = True
-                r2_compiler_container = QScrollArea()
-                r2_compiler_container.setWidgetResizable(True)
-                self.r2_decompiler_view = R2TextEdit()
-                r2_compiler_container.setWidget(self.r2_decompiler_view)
+                r2dec.setEnabled(True)
 
-                widget.addWidget(r2_compiler_container)
-                widget.setStretchFactor(3, 5)
+            self.decompiler_view.disasm_view.menu_extra_menu.append(r2_menu)
+
+    def show_graph_view(self):
+        self.r2_graph_view = R2ScrollArea()
+        self.app.main_tabs.addTab(self.r2_graph_view, 'graph view')
+        index = self.app.main_tabs.indexOf(self.r2_graph_view)
+        self.app.main_tabs.setCurrentIndex(index)
+
+        self.progress_dialog = utils.progress_dialog('building graph view...')
+        self.progress_dialog.forceShow()
+
+        self.r2graph = R2Graph(self.pipe)
+        self.r2graph.onR2Graph.connect(self._on_finish_graph)
+        self.r2graph.start()
+
+    def show_decompiler_view(self):
+        self.r2_decompiler_view = QPlainTextEdit()
+        self.r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.app.main_tabs.addTab(self.r2_decompiler_view, 'decompiler')
+        index = self.app.main_tabs.indexOf(self.r2_decompiler_view)
+        self.app.main_tabs.setCurrentIndex(index)
+
+        self.progress_dialog = utils.progress_dialog('decompiling function...')
+        self.progress_dialog.forceShow()
+
+        self.r2decompiler = R2Decompiler(self.pipe)
+        self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
+        self.r2decompiler.start()
 
     def on_r2_command(self, cmd):
         if cmd == 'clear' or cmd == 'clean':
