@@ -1,11 +1,10 @@
-import html
 import json
 import os
 import time
 from subprocess import *
 
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from PyQt5.QtWidgets import QPlainTextEdit, QSizePolicy, QScrollBar, QSplitter
+from PyQt5.QtWidgets import QPlainTextEdit, QSizePolicy, QScrollBar, QSplitter, QScrollArea
 
 from ui.widget_console import DwarfConsoleWidget
 
@@ -14,6 +13,17 @@ from lib import utils
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt
 
 from ui.widgets.list_view import DwarfListView
+
+
+class R2TextEdit(QPlainTextEdit):
+    def __init__(self, *__args):
+        super().__init__(*__args)
+        self.setReadOnly(True)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setLineWrapMode(QPlainTextEdit.NoWrap)
+        #self.setEnabled(False)
 
 
 class R2Analysis(QThread):
@@ -34,7 +44,7 @@ class R2Analysis(QThread):
 
         decompile_data = None
         if self.decompile:
-            decompile_data = self._pipe.cmd('pdd')
+            decompile_data = self._pipe.cmd('pddo')
 
         self.onR2AnalysisFinished.emit([function_info, graph, decompile_data])
 
@@ -131,7 +141,7 @@ class Plugin:
     def _create_pipe(self):
         self.pipe = R2Pipe()
         self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
-        self.pipe.cmd("e scr.color=2; e scr.html=1;")
+        self.pipe.cmd("e scr.color=2; e scr.html=1")
 
         r2arch = self.app.dwarf.arch
         if r2arch == 'arm64':
@@ -174,14 +184,13 @@ class Plugin:
         graph_data = data[1]
         decompile_data = data[2]
 
-        self.r2_graph_view.appendHtml(
-            '<pre><p>' + graph_data + '</p></pre>')
+        self.r2_graph_view.appendHtml('<pre>' + graph_data + '</pre>')
         self.r2_graph_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
 
         if decompile_data is not None:
-            print(html.unescape(decompile_data))
+
             self.r2_decompiler_view.appendHtml(
-                '<pre><p>' + html.unescape(decompile_data) + '</p></pre>')
+                '<p>' + decompile_data + '</pre>')
             self.r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
 
         for ref in function_info['callrefs']:
@@ -232,19 +241,22 @@ class Plugin:
             call_refs.setModel(self.call_refs_model)
 
             code_xrefs = DwarfListView()
-            self.code_xrefs_model = QStandardItemModel(0, 1)
-            self.code_xrefs_model.setHeaderData(0, Qt.Horizontal, 'Address')
+            self.code_xrefs_model = QStandardItemModel(0, 3)
+            self.code_xrefs_model.setHeaderData(0, Qt.Horizontal, 'code xrefs')
+            self.code_xrefs_model.setHeaderData(1, Qt.Horizontal, '')
+            self.code_xrefs_model.setHeaderData(2, Qt.Horizontal, '')
             code_xrefs.setModel(self.code_xrefs_model)
 
             r2_info.addWidget(call_refs)
             r2_info.addWidget(code_xrefs)
 
-            self.r2_graph_view = QPlainTextEdit()
-            self.r2_graph_view.setReadOnly(True)
-            self.r2_graph_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            r2_graph_container = QScrollArea()
+            r2_graph_container.setWidgetResizable(True)
+            self.r2_graph_view = R2TextEdit()
+            r2_graph_container.setWidget(self.r2_graph_view)
 
             widget.insertWidget(0, r2_info)
-            widget.addWidget(self.r2_graph_view)
+            widget.addWidget(r2_graph_container)
 
             widget.setStretchFactor(0, 2)
             widget.setStretchFactor(1, 5)
@@ -253,11 +265,12 @@ class Plugin:
             pdd = self.pipe.cmd('pdd --help')
             if pdd.startswith:
                 self.have_r2dec = True
-                self.r2_decompiler_view = QPlainTextEdit()
-                self.r2_decompiler_view.setReadOnly(True)
-                self.r2_decompiler_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                r2_compiler_container = QScrollArea()
+                r2_compiler_container.setWidgetResizable(True)
+                self.r2_decompiler_view = R2TextEdit()
+                r2_compiler_container.setWidget(self.r2_decompiler_view)
 
-                widget.addWidget(self.r2_decompiler_view)
+                widget.addWidget(r2_compiler_container)
                 widget.setStretchFactor(3, 5)
 
     def on_r2_command(self, cmd):
