@@ -1,6 +1,10 @@
 ## r2dwarf
 
-integrate r2/r2frida into dwarf
+integrate r2/r2frida into dwarf.
+
+Once installed, a new tab "r2" will appear in the main tabs.
+
+In the disasm view, you can right click to display graph and decompiler
 
 ### Installation
 
@@ -26,8 +30,6 @@ r2pm -ci r2dec
 ![Alt text](/screenshots/1.png?raw=true "1")
 
 ![Alt text](/screenshots/2.png?raw=true "2")
-
-![Alt text](/screenshots/3.png?raw=true "3")
 
 ```
 Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
