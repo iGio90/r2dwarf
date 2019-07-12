@@ -78,28 +78,12 @@ class Plugin:
 
     def __init__(self, app):
         self.app = app
-        self.pipe = R2Pipe()
-
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
 
-    def _on_session_created(self):
-        self.app.dwarf.onScriptLoaded.connect(self._on_script_loaded)
-        self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
-        self.app.dwarf.onApplyContext.connect(self._on_apply_context)
+        self.pipe = None
 
-        self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
-        self.console.onCommandExecute.connect(self.on_r2_command)
-        self.app.main_tabs.addTab(self.console, 'r2')
-
-    def _on_receive_cmd(self, args):
-        message, data = args
-        if 'payload' in message:
-            payload = message['payload']
-            if payload.startswith('r2 '):
-                cmd = message['payload'][3:]
-                self.on_r2_command(cmd)
-
-    def _on_script_loaded(self):
+    def _create_pipe(self):
+        self.pipe = R2Pipe()
         self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
         self.pipe.cmd("e scr.color=2; e scr.html=1;")
 
@@ -113,6 +97,25 @@ class Plugin:
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
             agent = f.read()
         self.app.dwarf.dwarf_api('evaluate', agent)
+
+    def _on_session_created(self):
+        self._create_pipe()
+
+        self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
+        self.app.dwarf.onApplyContext.connect(self._on_apply_context)
+
+        self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
+        self.console.onCommandExecute.connect(self.on_r2_command)
+
+        self.app.main_tabs.addTab(self.console, 'r2')
+
+    def _on_receive_cmd(self, args):
+        message, data = args
+        if 'payload' in message:
+            payload = message['payload']
+            if payload.startswith('r2 '):
+                cmd = message['payload'][3:]
+                self.on_r2_command(cmd)
 
     def _on_apply_context(self, context_data):
         is_java = 'is_java' in context_data and context_data['is_java']
