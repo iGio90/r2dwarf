@@ -25,9 +25,9 @@ r2pm -ci r2dec
 
 ![Alt text](/screenshots/1.png?raw=true "1")
 
-![Alt text](/screenshots/1.png?raw=true "2")
+![Alt text](/screenshots/2.png?raw=true "2")
 
-![Alt text](/screenshots/1.png?raw=true "3")
+![Alt text](/screenshots/3.png?raw=true "3")
 
 ```
 Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
