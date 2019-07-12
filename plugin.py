@@ -1,18 +1,31 @@
+"""
+Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>
+"""
 import json
 import os
 import time
 from subprocess import *
 
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from PyQt5.QtWidgets import QSizePolicy, QSplitter, QScrollArea, QScroller, QFrame, QLabel, QLineEdit, QPlainTextEdit, \
-    QScrollBar, QAction, QMenu
-
-from ui.widget_console import DwarfConsoleWidget
+from PyQt5.QtWidgets import QSizePolicy, QSplitter, QScrollArea, QScroller, QFrame, QLabel, QPlainTextEdit, \
+    QScrollBar, QMenu
 
 from lib import utils
-
-from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QSize
-
+from ui.widget_console import DwarfConsoleWidget
 from ui.widgets.list_view import DwarfListView
 
 
@@ -153,7 +166,7 @@ class Plugin:
     def __get_plugin_info__(self):
         return {
             'name': 'r2dwarf',
-            'description':  'r2frida in Dwarf',
+            'description': 'r2frida in Dwarf',
             'version': '1.0.0',
             'author': 'iGio90',
             'homepage': 'https://github.com/iGio90/Dwarf',
