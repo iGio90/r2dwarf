@@ -1,9 +1,7 @@
 import os
 import time
 from subprocess import *
-from threading import Thread
 
-from lib.dwarf_plugin import DwarfPlugin
 from ui.widget_console import DwarfConsoleWidget
 
 from lib import utils
@@ -12,7 +10,6 @@ from PyQt5.QtCore import QObject
 
 
 class R2Pipe(QObject):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -68,35 +65,31 @@ class R2Pipe(QObject):
         return output.decode('utf-8', errors='ignore')
 
 
-class R2DwarfPlugin(DwarfPlugin):
+class Plugin:
+    def __get_plugin_info__(self):
+        return {
+            'name': 'r2dwarf',
+            'description':  'r2frida in Dwarf',
+            'version': '1.0.0',
+            'author': 'iGio90',
+            'homepage': 'https://github.com/iGio90/Dwarf',
+            'license': 'https://www.gnu.org/licenses/gpl-3.0'
+        }
 
     def __init__(self, app):
-        self._main_app = app
+        self.app = app
         self.pipe = R2Pipe()
-        # ! required
-        # plugininfo
-        self.name = 'r2dwarf'
-        self.description = 'r2frida in Dwarf'
-        self.version = '1.0.0'
-        self.author = 'iGio90'
-        self.homepage = 'https://github.com/iGio90/Dwarf'
-        self.license = 'https://www.gnu.org/licenses/gpl-3.0'
-        #
-        self.supported_sessions = ['android', 'local', 'remote']
-        self.supported_arch = ['ia32', 'x64', 'arm', 'arm64']
-        self.supported_platforms = ['windows', 'darwin', 'linux']
-        # ! end required
 
-    def on_session_started(self, app):  # TODO: remove app from there
-        """ This function gets executed when Session is started
-        """
-        self.console = DwarfConsoleWidget(self._main_app, input_placeholder='r2', completer=False)
+        self.app.session_manager.sessionCreated.connect(self._on_session_created)
+
+    def _on_session_created(self):
+        self.app.dwarf.onScriptLoaded.connect(self._on_script_loaded)
+        self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
+        self.app.dwarf.onApplyContext.connect(self._on_apply_context)
+
+        self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
         self.console.onCommandExecute.connect(self.on_r2_command)
-        self._main_app.main_tabs.addTab(self.console, 'r2')
-
-        self._main_app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
-        self._main_app.dwarf.onScriptLoaded.connect(self._on_script_loaded)
-        self._main_app.dwarf.onApplyContext.connect(self._on_apply_context)
+        self.app.main_tabs.addTab(self.console, 'r2')
 
     def _on_receive_cmd(self, args):
         message, data = args
@@ -107,19 +100,19 @@ class R2DwarfPlugin(DwarfPlugin):
                 self.on_r2_command(cmd)
 
     def _on_script_loaded(self):
-        self.pipe.open('frida://attach/usb//%d' % self._main_app.dwarf.pid)
+        self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
         self.pipe.cmd("e scr.color=2; e scr.html=1;")
 
-        r2arch = self._main_app.dwarf.arch
+        r2arch = self.app.dwarf.arch
         if r2arch == 'arm64':
             r2arch = 'arm'
 
         self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
-            r2arch, self._main_app.dwarf.pointer_size * 8, self._main_app.dwarf.platform))
+            r2arch, self.app.dwarf.pointer_size * 8, self.app.dwarf.platform))
 
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
             agent = f.read()
-        self._main_app.dwarf.dwarf_api('evaluate', agent)
+        self.app.dwarf.dwarf_api('evaluate', agent)
 
     def _on_apply_context(self, context_data):
         is_java = 'is_java' in context_data and context_data['is_java']
