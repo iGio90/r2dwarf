@@ -90,10 +90,13 @@ class R2Decompiler(QThread):
     def __init__(self, pipe):
         super(R2Decompiler, self).__init__()
         self._pipe = pipe
-        self.decompile = False
 
     def run(self):
         decompile_data = self._pipe.cmd('pddo')
+
+        # todo: wait for proper fix
+        decompile_data = decompile_data.replace('#000', '#fff')
+
         self.onR2Decompiler.emit([decompile_data])
 
 
@@ -199,6 +202,9 @@ class Plugin:
         self.app.dwarf.dwarf_api('evaluate', agent)
 
     def _on_apply_context(self, context_data):
+        if self.pipe is None:
+            self._create_pipe()
+
         is_java = 'is_java' in context_data and context_data['is_java']
 
         if not is_java:
@@ -209,6 +215,9 @@ class Plugin:
                 self.pipe.cmd('s %s' % self.current_seek)
 
     def _on_disassemble(self, ptr):
+        if self.pipe is None:
+            self._create_pipe()
+
         if self.current_seek != ptr:
             self.current_seek = ptr
             self.pipe.cmd('s %s' % self.current_seek)
@@ -251,7 +260,7 @@ class Plugin:
         if decompile_data is not None:
             self.r2_decompiler_view.clear()
             self.r2_decompiler_view.appendHtml(
-                '<p>' + decompile_data + '</pre>')
+                '<pre>' + decompile_data + '</pre>')
             self.r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
 
     def _on_receive_cmd(self, args):
@@ -265,8 +274,6 @@ class Plugin:
     def _on_session_created(self):
         self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
         self.app.dwarf.onApplyContext.connect(self._on_apply_context)
-
-        self._create_pipe()
 
         self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
         self.console.onCommandExecute.connect(self.on_r2_command)
