@@ -1,12 +1,45 @@
+import html
+import json
 import os
 import time
 from subprocess import *
+
+from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from PyQt5.QtWidgets import QPlainTextEdit, QSizePolicy, QScrollBar, QSplitter
 
 from ui.widget_console import DwarfConsoleWidget
 
 from lib import utils
 
-from PyQt5.QtCore import QObject
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt
+
+from ui.widgets.list_view import DwarfListView
+
+
+class R2Analysis(QThread):
+    onR2AnalysisFinished = pyqtSignal(list, name='onR2AnalysisFinished')
+
+    def __init__(self, pipe):
+        super(R2Analysis, self).__init__()
+        self._pipe = pipe
+        self.decompile = False
+
+    def run(self):
+        self._pipe.cmd('aF')
+
+        graph = self._pipe.cmd('agf')
+        function_info = self._pipe.cmdj('afij')
+        if len(function_info) > 0:
+            function_info = function_info[0]
+
+        decompile_data = None
+        if self.decompile:
+            decompile_data = self._pipe.cmd('pdd')
+
+        self.onR2AnalysisFinished.emit([function_info, graph, decompile_data])
+
+    def start(self, priority=QThread.HighPriority):
+        return super().start(priority=priority)
 
 
 class R2Pipe(QObject):
@@ -34,6 +67,15 @@ class R2Pipe(QObject):
 
     def cmd(self, cmd):
         return self._cmd_process(cmd)
+
+    def cmdj(self, cmd):
+        self._cmd_process('e scr.html=0')
+        ret = self._cmd_process(cmd)
+        self._cmd_process('e scr.html=1')
+        try:
+            return json.loads(ret)
+        except:
+            return {}
 
     def _cmd_process(self, cmd):
         if not self.process:
@@ -78,9 +120,13 @@ class Plugin:
 
     def __init__(self, app):
         self.app = app
-        self.app.session_manager.sessionCreated.connect(self._on_session_created)
-
         self.pipe = None
+        self.analysis_progress_dialog = None
+        self.current_seek = ''
+        self.have_r2dec = False
+
+        self.app.session_manager.sessionCreated.connect(self._on_session_created)
+        self.app.onUIElementCreated.connect(self._on_ui_element_created)
 
     def _create_pipe(self):
         self.pipe = R2Pipe()
@@ -98,16 +144,59 @@ class Plugin:
             agent = f.read()
         self.app.dwarf.dwarf_api('evaluate', agent)
 
-    def _on_session_created(self):
-        self._create_pipe()
+    def _on_apply_context(self, context_data):
+        is_java = 'is_java' in context_data and context_data['is_java']
 
-        self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
-        self.app.dwarf.onApplyContext.connect(self._on_apply_context)
+        if not is_java:
+            if 'context' in context_data:
+                native_context = context_data['context']
+                pc = native_context['pc']['value']
+                self.current_seek = pc
+                self.pipe.cmd('s %s' % self.current_seek)
 
-        self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
-        self.console.onCommandExecute.connect(self.on_r2_command)
+    def _on_disassemble(self, ptr):
+        if self.current_seek != ptr:
+            self.current_seek = ptr
+            self.pipe.cmd('s %s' % self.current_seek)
 
-        self.app.main_tabs.addTab(self.console, 'r2')
+        self.analysis_progress_dialog = utils.progress_dialog('running r2 analysis...')
+        self.analysis_progress_dialog.forceShow()
+
+        r2analysis = R2Analysis(self.pipe)
+        r2analysis.decompile = self.have_r2dec
+        r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
+        r2analysis.start()
+
+    def _on_finish_analysis(self, data):
+        self.analysis_progress_dialog.cancel()
+
+        function_info = data[0]
+        graph_data = data[1]
+        decompile_data = data[2]
+
+        self.r2_graph_view.appendHtml(
+            '<pre><p>' + graph_data + '</p></pre>')
+        self.r2_graph_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
+
+        if decompile_data is not None:
+            print(html.unescape(decompile_data))
+            self.r2_decompiler_view.appendHtml(
+                '<pre><p>' + html.unescape(decompile_data) + '</p></pre>')
+            self.r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
+
+        for ref in function_info['callrefs']:
+            self.call_refs_model.appendRow([
+                QStandardItem(hex(ref['addr'])),
+                QStandardItem(hex(ref['at'])),
+                QStandardItem(ref['type'])
+            ])
+
+        for ref in function_info['codexrefs']:
+            self.code_xrefs_model.appendRow([
+                QStandardItem(hex(ref['addr'])),
+                QStandardItem(hex(ref['at'])),
+                QStandardItem(ref['type'])
+            ])
 
     def _on_receive_cmd(self, args):
         message, data = args
@@ -117,16 +206,68 @@ class Plugin:
                 cmd = message['payload'][3:]
                 self.on_r2_command(cmd)
 
-    def _on_apply_context(self, context_data):
-        is_java = 'is_java' in context_data and context_data['is_java']
+    def _on_session_created(self):
+        self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
+        self.app.dwarf.onApplyContext.connect(self._on_apply_context)
 
-        if not is_java:
-            if 'context' in context_data:
-                native_context = context_data['context']
-                pc = native_context['pc']['value']
+        self._create_pipe()
 
-                self.pipe.cmd('s %s' % pc)
+        self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
+        self.console.onCommandExecute.connect(self.on_r2_command)
+
+        self.app.main_tabs.addTab(self.console, 'r2')
+
+    def _on_ui_element_created(self, elem, widget):
+        if elem == 'disassembly':
+            widget.onDisassemble.connect(self._on_disassemble)
+
+            r2_info = QSplitter()
+            r2_info.setOrientation(Qt.Vertical)
+
+            call_refs = DwarfListView()
+            self.call_refs_model = QStandardItemModel(0, 3)
+            self.call_refs_model.setHeaderData(0, Qt.Horizontal, 'call refs')
+            self.call_refs_model.setHeaderData(1, Qt.Horizontal, '')
+            self.call_refs_model.setHeaderData(2, Qt.Horizontal, '')
+            call_refs.setModel(self.call_refs_model)
+
+            code_xrefs = DwarfListView()
+            self.code_xrefs_model = QStandardItemModel(0, 1)
+            self.code_xrefs_model.setHeaderData(0, Qt.Horizontal, 'Address')
+            code_xrefs.setModel(self.code_xrefs_model)
+
+            r2_info.addWidget(call_refs)
+            r2_info.addWidget(code_xrefs)
+
+            self.r2_graph_view = QPlainTextEdit()
+            self.r2_graph_view.setReadOnly(True)
+            self.r2_graph_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            widget.insertWidget(0, r2_info)
+            widget.addWidget(self.r2_graph_view)
+
+            widget.setStretchFactor(0, 2)
+            widget.setStretchFactor(1, 5)
+            widget.setStretchFactor(2, 5)
+
+            pdd = self.pipe.cmd('pdd --help')
+            if pdd.startswith:
+                self.have_r2dec = True
+                self.r2_decompiler_view = QPlainTextEdit()
+                self.r2_decompiler_view.setReadOnly(True)
+                self.r2_decompiler_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+                widget.addWidget(self.r2_decompiler_view)
+                widget.setStretchFactor(3, 5)
 
     def on_r2_command(self, cmd):
-        result = self.pipe.cmd(cmd)
-        self.console.log(result, time_prefix=False)
+        if cmd == 'clear' or cmd == 'clean':
+            self.console.clear()
+        else:
+            try:
+                result = self.pipe.cmd(cmd)
+                self.console.log(result, time_prefix=False)
+            except BrokenPipeError:
+                self.console.log('pipe is broken. recreating...', time_prefix=False)
+                self._create_pipe()
+                self.pipe.cmd('s %s' % self.current_seek)
