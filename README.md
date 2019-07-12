@@ -23,6 +23,12 @@ r2pm -ci r2dec
 * panel with r2 console
 * disasm view enriched with graph view, decompiler and xrefs and data refs
 
+![Alt text](/screenshots/1.png?raw=true "1")
+
+![Alt text](/screenshots/1.png?raw=true "2")
+
+![Alt text](/screenshots/1.png?raw=true "3")
+
 ```
 Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
 
