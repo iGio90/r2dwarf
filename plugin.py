@@ -191,11 +191,19 @@ class Plugin:
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
 
         r2arch = self.app.dwarf.arch
+        r2bits = 32
         if r2arch == 'arm64':
             r2arch = 'arm'
+            r2bits = 64
+        elif r2arch == 'x64':
+            r2arch = 'x86'
+            r2bits = 64
+        elif r2arch == 'ia32':
+            r2arch = 'x86'
+
 
         self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
-            r2arch, self.app.dwarf.pointer_size * 8, self.app.dwarf.platform))
+            r2arch, r2bits, self.app.dwarf.platform))
 
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
             agent = f.read()
