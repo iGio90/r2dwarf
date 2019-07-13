@@ -183,9 +183,9 @@ class Plugin:
     def __init__(self, app):
         self.app = app
         self.pipe = None
-        self.progress_dialog = None
         self.current_seek = ''
         self.with_r2dec = False
+        self._working = False
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
@@ -238,15 +238,16 @@ class Plugin:
             self.current_seek = ptr
             self.pipe.cmd('s %s' % self.current_seek)
 
-        self.progress_dialog = utils.progress_dialog('running r2 analysis...')
-        self.progress_dialog.forceShow()
+        self.app.show_progress('r2: analyzing function')
+        self._working = True
 
         self.r2analysis = R2Analysis(self.pipe)
         self.r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
         self.r2analysis.start()
 
     def _on_finish_analysis(self, data):
-        self.progress_dialog.cancel()
+        self.app.hide_progress()
+        self._working = False
 
         function_info = data[0]
 
@@ -266,18 +267,35 @@ class Plugin:
                 ])
 
     def _on_finish_graph(self, data):
-        self.progress_dialog.cancel()
+        self.app.hide_progress()
+        self._working = False
+
         graph_data = data[0]
-        self.r2_graph_view.setText('<pre>' + graph_data + '</pre>')
+
+        r2_graph_view = R2ScrollArea()
+        r2_graph_view.setText('<pre>' + graph_data + '</pre>')
+
+        self.app.main_tabs.addTab(r2_graph_view, 'graph view')
+        index = self.app.main_tabs.indexOf(r2_graph_view)
+        self.app.main_tabs.setCurrentIndex(index)
 
     def _on_finish_decompiler(self, data):
-        self.progress_dialog.cancel()
+        self.app.hide_progress()
+        self._working = False
+
         decompile_data = data[0]
+
+        r2_decompiler_view = QPlainTextEdit()
+        r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
+        index = self.app.main_tabs.indexOf(r2_decompiler_view)
+        self.app.main_tabs.setCurrentIndex(index)
+
         if decompile_data is not None:
-            self.r2_decompiler_view.clear()
-            self.r2_decompiler_view.appendHtml(
+            r2_decompiler_view.appendHtml(
                 '<pre>' + decompile_data + '</pre>')
-            self.r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
+            r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
 
     def _on_receive_cmd(self, args):
         message, data = args
@@ -332,41 +350,38 @@ class Plugin:
             self.decompiler_view.disasm_view.menu_extra_menu.append(r2_menu)
 
     def show_graph_view(self):
-        self.r2_graph_view = R2ScrollArea()
-        self.app.main_tabs.addTab(self.r2_graph_view, 'graph view')
-        index = self.app.main_tabs.indexOf(self.r2_graph_view)
-        self.app.main_tabs.setCurrentIndex(index)
+        if self._working:
+            utils.show_message_box('please wait for the other works to finish')
+        else:
+            self.app.show_progress('r2: building graph view')
+            self._working = True
 
-        self.progress_dialog = utils.progress_dialog('building graph view...')
-        self.progress_dialog.forceShow()
-
-        self.r2graph = R2Graph(self.pipe)
-        self.r2graph.onR2Graph.connect(self._on_finish_graph)
-        self.r2graph.start()
+            self.r2graph = R2Graph(self.pipe)
+            self.r2graph.onR2Graph.connect(self._on_finish_graph)
+            self.r2graph.start()
 
     def show_decompiler_view(self):
-        self.r2_decompiler_view = QPlainTextEdit()
-        self.r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.app.main_tabs.addTab(self.r2_decompiler_view, 'decompiler')
-        index = self.app.main_tabs.indexOf(self.r2_decompiler_view)
-        self.app.main_tabs.setCurrentIndex(index)
+        if self._working:
+            utils.show_message_box('please wait for the other works to finish')
+        else:
+            self.app.show_progress('r2: decompiling function')
+            self._working = True
 
-        self.progress_dialog = utils.progress_dialog('decompiling function...')
-        self.progress_dialog.forceShow()
-
-        self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
-        self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
-        self.r2decompiler.start()
+            self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
+            self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
+            self.r2decompiler.start()
 
     def on_r2_command(self, cmd):
         if cmd == 'clear' or cmd == 'clean':
             self.console.clear()
         else:
-            try:
-                result = self.pipe.cmd(cmd)
-                self.console.log(result, time_prefix=False)
-            except BrokenPipeError:
-                self.console.log('pipe is broken. recreating...', time_prefix=False)
-                self._create_pipe()
-                self.pipe.cmd('s %s' % self.current_seek)
+            if self._working:
+                self.console.log('please wait for other works to finish', time_prefix=False)
+            else:
+                try:
+                    result = self.pipe.cmd(cmd)
+                    self.console.log(result, time_prefix=False)
+                except BrokenPipeError:
+                    self.console.log('pipe is broken. recreating...', time_prefix=False)
+                    self._create_pipe()
+                    self.pipe.cmd('s %s' % self.current_seek)
