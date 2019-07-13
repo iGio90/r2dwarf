@@ -87,12 +87,16 @@ class R2Graph(QThread):
 class R2Decompiler(QThread):
     onR2Decompiler = pyqtSignal(list, name='onR2Decompiler')
 
-    def __init__(self, pipe):
+    def __init__(self, pipe, with_r2dec):
         super(R2Decompiler, self).__init__()
         self._pipe = pipe
+        self._with_r2dec = with_r2dec
 
     def run(self):
-        decompile_data = self._pipe.cmd('pddo')
+        if self._with_r2dec:
+            decompile_data = self._pipe.cmd('pddo')
+        else:
+            decompile_data = self._pipe.cmd('pdc')
 
         # todo: wait for proper fix
         decompile_data = decompile_data.replace('#000', '#fff')
@@ -181,7 +185,7 @@ class Plugin:
         self.pipe = None
         self.progress_dialog = None
         self.current_seek = ''
-        self.with_decompiler = False
+        self.with_r2dec = False
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
@@ -191,10 +195,8 @@ class Plugin:
         self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
         r2_decompilers = r2_decompilers.split()
-        if r2_decompilers and 'pdc' in r2_decompilers:
-            self.pipe.cmd('e cmd.pdc=pdc') # TODO: let select decompiler
-            self.with_decompiler = True
-
+        if r2_decompilers and 'pdd' in r2_decompilers:
+            self.with_r2dec = True
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
 
         r2arch = self.app.dwarf.arch
@@ -207,7 +209,6 @@ class Plugin:
             r2bits = 64
         elif r2arch == 'ia32':
             r2arch = 'x86'
-
 
         self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
             r2arch, r2bits, self.app.dwarf.platform))
@@ -326,8 +327,7 @@ class Plugin:
 
             r2_menu = QMenu('r2')
             r2_menu.addAction('graph view', self.show_graph_view)
-            if self.with_decompiler:
-                r2dec = r2_menu.addAction('decompile', self.show_decompiler_view)
+            r2_menu.addAction('decompile', self.show_decompiler_view)
 
             self.decompiler_view.disasm_view.menu_extra_menu.append(r2_menu)
 
@@ -345,9 +345,6 @@ class Plugin:
         self.r2graph.start()
 
     def show_decompiler_view(self):
-        if not self.with_decompiler:
-            return
-
         self.r2_decompiler_view = QPlainTextEdit()
         self.r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -358,7 +355,7 @@ class Plugin:
         self.progress_dialog = utils.progress_dialog('decompiling function...')
         self.progress_dialog.forceShow()
 
-        self.r2decompiler = R2Decompiler(self.pipe)
+        self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
         self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
         self.r2decompiler.start()
 
