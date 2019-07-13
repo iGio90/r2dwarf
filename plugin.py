@@ -58,17 +58,18 @@ class R2ScrollArea(QScrollArea):
 class R2Analysis(QThread):
     onR2AnalysisFinished = pyqtSignal(list, name='onR2AnalysisFinished')
 
-    def __init__(self, pipe):
+    def __init__(self, pipe, dwarf_range):
         super(R2Analysis, self).__init__()
         self._pipe = pipe
+        self._dwarf_range = dwarf_range
 
     def run(self):
-        self._pipe.cmd('aF')
+        self._pipe.cmd('af')
         function_info = self._pipe.cmdj('afij')
         if len(function_info) > 0:
             function_info = function_info[0]
 
-        self.onR2AnalysisFinished.emit([function_info])
+        self.onR2AnalysisFinished.emit([self._dwarf_range, function_info])
 
 
 class R2Graph(QThread):
@@ -109,6 +110,7 @@ class R2Pipe(QObject):
         super().__init__(*args, **kwargs)
 
         self.process = None
+        self._working = False
 
         if os.name != 'nt':
             utils.do_shell_command("pkill radare2")
@@ -131,9 +133,7 @@ class R2Pipe(QObject):
         return self._cmd_process(cmd)
 
     def cmdj(self, cmd):
-        self._cmd_process('e scr.html=0')
         ret = self._cmd_process(cmd)
-        self._cmd_process('e scr.html=1')
         try:
             return json.loads(ret)
         except:
@@ -141,14 +141,18 @@ class R2Pipe(QObject):
 
     def _cmd_process(self, cmd):
         if not self.process:
-            print('error')
             return
+
+        while self._working:
+            time.sleep(.1)
+
+        self._working = True
+
         cmd = cmd.strip().replace("\n", ";")
         self.process.stdin.write((cmd + '\n').encode('utf8'))
         self.process.stdin.flush()
 
         output = b''
-        wait_max = 1000
         while True:
             try:
                 result = self.process.stdout.read(4096)
@@ -161,11 +165,9 @@ class R2Pipe(QObject):
 
                 output += result
             else:
-                wait_max -= 1
                 time.sleep(0.001)
-                if not wait_max:
-                    break
 
+        self._working = False
         return output.decode('utf-8', errors='ignore')
 
 
@@ -236,21 +238,23 @@ class Plugin:
             if 'context' in context_data:
                 native_context = context_data['context']
                 pc = native_context['pc']['value']
-                self.current_seek = pc
-                self.pipe.cmd('s %s' % self.current_seek)
+                if self.current_seek != pc:
+                    self.current_seek = pc
+                    self.pipe.cmd('s %s' % self.current_seek)
 
-    def _on_disassemble(self, ptr):
+    def _on_disassemble(self, dwarf_range):
         if self.pipe is None:
             self._create_pipe()
 
-        if self.current_seek != ptr:
-            self.current_seek = ptr
+        start_address = hex(dwarf_range.start_address)
+        if self.current_seek != start_address:
+            self.current_seek = start_address
             self.pipe.cmd('s %s' % self.current_seek)
 
         self.app.show_progress('r2: analyzing function')
         self._working = True
 
-        self.r2analysis = R2Analysis(self.pipe)
+        self.r2analysis = R2Analysis(self.pipe, dwarf_range)
         self.r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
         self.r2analysis.start()
 
@@ -258,7 +262,14 @@ class Plugin:
         self.app.hide_progress()
         self._working = False
 
-        function_info = data[0]
+        dwarf_range = data[0]
+        function_info = data[1]
+
+        num_instructions = 0
+        if 'offset' in function_info:
+            dwarf_range.start_offset = function_info['offset'] - dwarf_range.base
+            num_instructions = int(self.pipe.cmd('pi~?')[:-1])
+        self.disassembly_view.disasm_view.disassemble(dwarf_range, num_instructions=num_instructions)
 
         if 'callrefs' in function_info:
             for ref in function_info['callrefs']:
@@ -325,8 +336,9 @@ class Plugin:
 
     def _on_ui_element_created(self, elem, widget):
         if elem == 'disassembly':
-            self.decompiler_view = widget
-            self.decompiler_view.onDisassemble.connect(self._on_disassemble)
+            self.disassembly_view = widget
+            self.disassembly_view.run_default_disassembler = False
+            self.disassembly_view.onDisassemble.connect(self._on_disassemble)
 
             r2_info = QSplitter()
             r2_info.setOrientation(Qt.Vertical)
@@ -348,15 +360,15 @@ class Plugin:
             r2_info.addWidget(call_refs)
             r2_info.addWidget(code_xrefs)
 
-            self.decompiler_view.insertWidget(0, r2_info)
-            self.decompiler_view.setStretchFactor(0, 1)
-            self.decompiler_view.setStretchFactor(1, 5)
+            self.disassembly_view.insertWidget(0, r2_info)
+            self.disassembly_view.setStretchFactor(0, 1)
+            self.disassembly_view.setStretchFactor(1, 5)
 
             r2_menu = QMenu('r2')
             r2_menu.addAction('graph view', self.show_graph_view)
             r2_menu.addAction('decompile', self.show_decompiler_view)
 
-            self.decompiler_view.disasm_view.menu_extra_menu.append(r2_menu)
+            self.disassembly_view.disasm_view.menu_extra_menu.append(r2_menu)
 
     def show_graph_view(self):
         if self._working:
