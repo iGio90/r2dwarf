@@ -191,8 +191,17 @@ class Plugin:
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
 
     def _create_pipe(self):
+        device = self.app.dwarf.device
+
         self.pipe = R2Pipe()
-        self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
+
+        if device.type == 'usb':
+            self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
+        elif device.type == 'local':
+            self.pipe.open('frida://%d' % self.app.dwarf.pid)
+        else:
+            raise Exception('unsupported device type %s' % device.type)
+
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
         r2_decompilers = r2_decompilers.split()
         if r2_decompilers and 'pdd' in r2_decompilers:
