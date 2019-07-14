@@ -29,7 +29,6 @@ from lib.prefs import Prefs
 from ui.widget_console import DwarfConsoleWidget
 from ui.widgets.list_view import DwarfListView
 
-
 #########
 # PREFS #
 #########
@@ -232,6 +231,8 @@ class R2Decompiler(QThread):
 
 
 class R2Pipe(QObject):
+    onPipeBroken = pyqtSignal(str, 'onPipeBroken')
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -256,14 +257,18 @@ class R2Pipe(QObject):
         try:
             self.process = Popen(cmd, shell=False, stdin=PIPE, stdout=PIPE, bufsize=0)
         except Exception as e:
-            print(e) # TODO: handle the stuff (unable to attach)
+            print(e)  # TODO: handle the stuff (unable to attach)
         self.process.stdout.read(1)
 
     def cmd(self, cmd):
-        return self._cmd_process(cmd)
+        try:
+            return self._cmd_process(cmd)
+        except Exception as e:
+            self.onPipeBroken.emit(str(e))
+        return None
 
     def cmdj(self, cmd):
-        ret = self._cmd_process(cmd)
+        ret = self.cmd(cmd)
         try:
             return json.loads(ret)
         except:
@@ -346,6 +351,8 @@ class Plugin:
         device = self.app.dwarf.device
 
         self.pipe = R2Pipe()
+        self.pipe.onPipeBroken.connect(self._on_pipe_error)
+
         if device.type == 'usb':
             self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
         elif device.type == 'local':
@@ -493,6 +500,10 @@ class Plugin:
         if address == -1:
             graph.setEnabled(False)
             decompile.setEnabled(False)
+
+    def _on_pipe_error(self, reason):
+        print('r2: pipe got broken\n%s' % reason)
+        self._create_pipe()
 
     def _on_receive_cmd(self, args):
         message, data = args
