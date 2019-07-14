@@ -69,9 +69,9 @@ class R2ScrollArea(QScrollArea):
 
 
 class OptionsDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, prefs, parent=None):
         super(OptionsDialog, self).__init__(parent)
-        self._prefs = Prefs()
+        self._prefs = prefs
 
         self.setMinimumWidth(500)
         self.setContentsMargins(5, 5, 5, 5)
@@ -99,8 +99,8 @@ class OptionsDialog(QDialog):
         layout.addLayout(buttons)
 
     @staticmethod
-    def show_dialog():
-        dialog = OptionsDialog()
+    def show_dialog(prefs):
+        dialog = OptionsDialog(prefs)
         result = dialog.exec_()
 
         if result == QDialog.Accepted:
@@ -322,7 +322,7 @@ class Plugin:
             return self.menu_items
 
         options = QAction('Options')
-        options.triggered.connect(OptionsDialog.show_dialog)
+        options.triggered.connect(lambda: OptionsDialog.show_dialog(self._prefs))
 
         self.menu_items.append(options)
         return self.menu_items
