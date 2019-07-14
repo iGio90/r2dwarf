@@ -18,14 +18,15 @@ git clone https://github.com/iGio90/r2dwarf
 # make sure r2frida is installed:
 r2pm -ci r2frida
 
-# optionally enable decompiler
+# optionally install r2dec decompiler (default uses pdc)
 r2pm -ci r2dec
 ```
 
 ### Features
 
 * panel with r2 console
-* disasm view enriched with graph view, decompiler and xrefs and data refs
+* disasm view enriched with graph view, decompiler, xrefs and data refs
+* option to enhance UI for widescreen monitors
 
 ![Alt text](/screenshots/1.png?raw=true "1")
 
