@@ -231,7 +231,7 @@ class R2Decompiler(QThread):
 
 
 class R2Pipe(QObject):
-    onPipeBroken = pyqtSignal(str, 'onPipeBroken')
+    onPipeBroken = pyqtSignal(str, name='onPipeBroken')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -332,11 +332,16 @@ class Plugin:
         self.menu_items.append(options)
         return self.menu_items
 
+    def __get_agent__(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
+            return f.read()
+
     def __init__(self, app):
         self.app = app
 
         self._prefs = Prefs()
         self.pipe = None
+        self.js_api_pipe = None
         self.current_seek = ''
         self.with_r2dec = False
         self._working = False
@@ -348,23 +353,29 @@ class Plugin:
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
 
     def _create_pipe(self):
-        device = self.app.dwarf.device
-
-        self.pipe = R2Pipe()
-        self.pipe.onPipeBroken.connect(self._on_pipe_error)
-
-        if device.type == 'usb':
-            self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
-        elif device.type == 'local':
-            self.pipe.open('frida://%d' % self.app.dwarf.pid)
-        else:
-            raise Exception('unsupported device type %s' % device.type)
+        self.pipe = self._open_pipe()
 
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
         r2_decompilers = r2_decompilers.split()
         if r2_decompilers and 'pdd' in r2_decompilers:
             self.with_r2dec = True
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
+
+    def _create_js_api_pipe(self):
+        self.js_api_pipe = self._open_pipe()
+
+    def _open_pipe(self):
+        device = self.app.dwarf.device
+
+        pipe = R2Pipe()
+        pipe.onPipeBroken.connect(self._on_pipe_error)
+
+        if device.type == 'usb':
+            pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
+        elif device.type == 'local':
+            pipe.open('frida://%d' % self.app.dwarf.pid)
+        else:
+            raise Exception('unsupported device type %s' % device.type)
 
         r2arch = self.app.dwarf.arch
         r2bits = 32
@@ -377,12 +388,9 @@ class Plugin:
         elif r2arch == 'ia32':
             r2arch = 'x86'
 
-        self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
+        pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
             r2arch, r2bits, self.app.dwarf.platform))
-
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
-            agent = f.read()
-        self.app.dwarf.dwarf_api('evaluate', agent)
+        return pipe
 
     def _on_apply_context(self, context_data):
         if self.pipe is None:
@@ -510,8 +518,15 @@ class Plugin:
         if 'payload' in message:
             payload = message['payload']
             if payload.startswith('r2 '):
+                if self.js_api_pipe is None:
+                    self._create_js_api_pipe()
+
                 cmd = message['payload'][3:]
-                self.on_r2_command(cmd)
+                try:
+                    result = self.js_api_pipe.cmd(cmd)
+                    self.app.dwarf._script.post({"type": 'r2', "payload": result})
+                except:
+                    self.app.dwarf._script.post({"type": 'r2', "payload": None})
 
     def _on_session_created(self):
         self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
