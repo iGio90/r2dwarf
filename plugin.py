@@ -22,13 +22,23 @@ from subprocess import *
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QSizePolicy, QSplitter, QScrollArea, QScroller, QFrame, QLabel, QPlainTextEdit, \
-    QScrollBar, QMenu
+    QScrollBar, QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox
 
 from lib import utils
+from lib.prefs import Prefs
 from ui.widget_console import DwarfConsoleWidget
 from ui.widgets.list_view import DwarfListView
 
 
+#########
+# PREFS #
+#########
+KEY_WIDESCREEN_MODE = 'r2_widescreen'
+
+
+###########
+# WIDGETS #
+###########
 class R2ScrollArea(QScrollArea):
     def __init__(self, *__args):
         super().__init__(*__args)
@@ -48,13 +58,63 @@ class R2ScrollArea(QScrollArea):
 
         self.setWidget(self.label)
 
-    def sizeHint(self):
-        return QSize(200, 200)
+    def clearText(self):
+        self.label.clear()
 
     def setText(self, text):
         self.label.setText(text)
 
+    def sizeHint(self):
+        return QSize(200, 200)
 
+
+class OptionsDialog(QDialog):
+    def __init__(self, parent=None):
+        super(OptionsDialog, self).__init__(parent)
+        self._prefs = Prefs()
+
+        self.setMinimumWidth(500)
+        self.setContentsMargins(5, 5, 5, 5)
+
+        layout = QVBoxLayout(self)
+        options = QVBoxLayout()
+        options.setContentsMargins(0, 0, 0, 20)
+
+        options.addWidget(QLabel('UI'))
+
+        self.widescreen_mode = QCheckBox('widescreen mode')
+        self.widescreen_mode.setCheckState(Qt.Checked if self._prefs.get(
+            KEY_WIDESCREEN_MODE, False) else Qt.Unchecked)
+        options.addWidget(self.widescreen_mode)
+
+        buttons = QHBoxLayout()
+        cancel = QPushButton('cancel')
+        cancel.clicked.connect(self.close)
+        buttons.addWidget(cancel)
+        accept = QPushButton('accept')
+        accept.clicked.connect(self.accept)
+        buttons.addWidget(accept)
+
+        layout.addLayout(options)
+        layout.addLayout(buttons)
+
+    @staticmethod
+    def show_dialog():
+        dialog = OptionsDialog()
+        result = dialog.exec_()
+
+        if result == QDialog.Accepted:
+            try:
+                dialog._prefs.put(
+                    KEY_WIDESCREEN_MODE, True if dialog.widescreen_mode.checkState() == Qt.Checked else False
+                )
+            except:
+                pass
+
+
+################
+# CORE CLASSES #
+################
 class R2Database:
     def __init__(self):
         self.functions_analysis = {}
@@ -249,15 +309,29 @@ class Plugin:
             'version': '1.0.0',
             'author': 'iGio90',
             'homepage': 'https://github.com/iGio90/Dwarf',
-            'license': 'https://www.gnu.org/licenses/gpl-3.0'
+            'license': 'https://www.gnu.org/licenses/gpl-3.0',
         }
+
+    def __get_top_menu_actions__(self):
+        if len(self.menu_items) > 0:
+            return self.menu_items
+
+        options = QAction('Options')
+        options.triggered.connect(OptionsDialog.show_dialog)
+
+        self.menu_items.append(options)
+        return self.menu_items
 
     def __init__(self, app):
         self.app = app
+
+        self._prefs = Prefs()
         self.pipe = None
         self.current_seek = ''
         self.with_r2dec = False
         self._working = False
+
+        self.menu_items = []
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
@@ -316,6 +390,11 @@ class Plugin:
         if self.pipe is None:
             self._create_pipe()
 
+        if self.disassembly_view.decompilation_view is not None:
+            self.disassembly_view.decompilation_view.clearText()
+        if self.disassembly_view.graph_view is not None:
+            self.disassembly_view.graph_view.clearText()
+
         start_address = hex(dwarf_range.start_address)
         if self.current_seek != start_address:
             self.current_seek = start_address
@@ -362,12 +441,18 @@ class Plugin:
 
         graph_data = data[0]
 
-        r2_graph_view = R2ScrollArea()
-        r2_graph_view.setText('<pre>' + graph_data + '</pre>')
+        if self._prefs.get(KEY_WIDESCREEN_MODE, False):
+            if self.disassembly_view.graph_view is None:
+                self.disassembly_view.graph_view = R2ScrollArea()
+                self.disassembly_view.addWidget(self.disassembly_view.graph_view)
+            self.disassembly_view.graph_view.setText('<pre>' + graph_data + '</pre>')
+        else:
+            r2_graph_view = R2ScrollArea()
+            r2_graph_view.setText('<pre>' + graph_data + '</pre>')
 
-        self.app.main_tabs.addTab(r2_graph_view, 'graph view')
-        index = self.app.main_tabs.indexOf(r2_graph_view)
-        self.app.main_tabs.setCurrentIndex(index)
+            self.app.main_tabs.addTab(r2_graph_view, 'graph view')
+            index = self.app.main_tabs.indexOf(r2_graph_view)
+            self.app.main_tabs.setCurrentIndex(index)
 
     def _on_finish_decompiler(self, data):
         self.app.hide_progress()
@@ -375,17 +460,22 @@ class Plugin:
 
         decompile_data = data[0]
 
-        r2_decompiler_view = QPlainTextEdit()
-        r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
-        index = self.app.main_tabs.indexOf(r2_decompiler_view)
-        self.app.main_tabs.setCurrentIndex(index)
+        if self._prefs.get(KEY_WIDESCREEN_MODE, False):
+            if self.disassembly_view.decompilation_view is None:
+                self.disassembly_view.decompilation_view = R2ScrollArea()
+            r2_decompiler_view = self.disassembly_view.decompilation_view
+            self.disassembly_view.addWidget(self.disassembly_view.decompilation_view)
+        else:
+            r2_decompiler_view = QPlainTextEdit()
+            r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
+            index = self.app.main_tabs.indexOf(r2_decompiler_view)
+            self.app.main_tabs.setCurrentIndex(index)
 
         if decompile_data is not None:
-            r2_decompiler_view.appendHtml(
+            r2_decompiler_view.setText(
                 '<pre>' + decompile_data + '</pre>')
-            r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
 
     def _on_hook_menu(self, menu, address):
         menu.addSeparator()
@@ -418,6 +508,9 @@ class Plugin:
         if elem == 'disassembly':
             self.disassembly_view = widget
             self.disassembly_view.run_default_disassembler = False
+            self.disassembly_view.graph_view = None
+            self.disassembly_view.decompilation_view = None
+
             self.disassembly_view.onDisassemble.connect(self._on_disassemble)
 
             r2_info = QSplitter()
@@ -446,17 +539,6 @@ class Plugin:
 
             self.disassembly_view.disasm_view.menu_extra_menu_hooks.append(self._on_hook_menu)
 
-    def show_graph_view(self):
-        if self._working:
-            utils.show_message_box('please wait for the other works to finish')
-        else:
-            self.app.show_progress('r2: building graph view')
-            self._working = True
-
-            self.r2graph = R2Graph(self.pipe)
-            self.r2graph.onR2Graph.connect(self._on_finish_graph)
-            self.r2graph.start()
-
     def show_decompiler_view(self):
         if self._working:
             utils.show_message_box('please wait for the other works to finish')
@@ -467,6 +549,17 @@ class Plugin:
             self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
             self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
             self.r2decompiler.start()
+
+    def show_graph_view(self):
+        if self._working:
+            utils.show_message_box('please wait for the other works to finish')
+        else:
+            self.app.show_progress('r2: building graph view')
+            self._working = True
+
+            self.r2graph = R2Graph(self.pipe)
+            self.r2graph.onR2Graph.connect(self._on_finish_graph)
+            self.r2graph.start()
 
     def on_r2_command(self, cmd):
         if cmd == 'clear' or cmd == 'clean':
