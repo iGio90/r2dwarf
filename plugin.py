@@ -391,9 +391,11 @@ class Plugin:
             self._create_pipe()
 
         if self.disassembly_view.decompilation_view is not None:
-            self.disassembly_view.decompilation_view.clearText()
+            self.disassembly_view.decompilation_view.setParent(None)
+            self.disassembly_view.decompilation_view = None
         if self.disassembly_view.graph_view is not None:
-            self.disassembly_view.graph_view.clearText()
+            self.disassembly_view.graph_view.setParent(None)
+            self.disassembly_view.graph_view = None
 
         start_address = hex(dwarf_range.start_address)
         if self.current_seek != start_address:
@@ -418,7 +420,7 @@ class Plugin:
         if 'offset' in function_info:
             dwarf_range.start_offset = function_info['offset'] - dwarf_range.base
             num_instructions = int(self.pipe.cmd('pi~?'))
-        self.disassembly_view.disasm_view.disassemble(dwarf_range, num_instructions=num_instructions)
+        self.disassembly_view.disasm_view.start_disassemble(dwarf_range, num_instructions=num_instructions)
 
         if 'callrefs' in function_info:
             for ref in function_info['callrefs']:
@@ -507,11 +509,11 @@ class Plugin:
     def _on_ui_element_created(self, elem, widget):
         if elem == 'disassembly':
             self.disassembly_view = widget
-            self.disassembly_view.run_default_disassembler = False
             self.disassembly_view.graph_view = None
             self.disassembly_view.decompilation_view = None
 
-            self.disassembly_view.onDisassemble.connect(self._on_disassemble)
+            self.disassembly_view.disasm_view.run_default_disassembler = False
+            self.disassembly_view.disasm_view.onDisassemble.connect(self._on_disassemble)
 
             r2_info = QSplitter()
             r2_info.setOrientation(Qt.Vertical)
