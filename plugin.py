@@ -239,6 +239,9 @@ class R2Pipe(QObject):
         self.process = None
         self._working = False
 
+        self.close()
+
+    def close(self):
         if os.name != 'nt':
             utils.do_shell_command("pkill radare2")
         else:
@@ -253,7 +256,7 @@ class R2Pipe(QObject):
         try:
             self.process = Popen(cmd, shell=False, stdin=PIPE, stdout=PIPE, bufsize=0)
         except Exception as e:
-            print(e)
+            print(e) # TODO: handle the stuff (unable to attach)
         self.process.stdout.read(1)
 
     def cmd(self, cmd):
@@ -302,6 +305,8 @@ class R2Pipe(QObject):
 
 
 class Plugin:
+    # TODO: check the if not pipe createpipe when it fails why retrying on every disasm/apply_ctx
+
     def __get_plugin_info__(self):
         return {
             'name': 'r2dwarf',
@@ -334,13 +339,13 @@ class Plugin:
         self.menu_items = []
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
+        self.app.session_manager.sessionStopped.connect(self._on_session_stopped)
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
 
     def _create_pipe(self):
         device = self.app.dwarf.device
 
         self.pipe = R2Pipe()
-
         if device.type == 'usb':
             self.pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
         elif device.type == 'local':
@@ -505,6 +510,11 @@ class Plugin:
         self.console.onCommandExecute.connect(self.on_r2_command)
 
         self.app.main_tabs.addTab(self.console, 'r2')
+
+    def _on_session_stopped(self):
+        # TODO: cleanup the stuff
+        if self.pipe:
+            self.pipe.close()
 
     def _on_ui_element_created(self, elem, widget):
         if elem == 'disassembly':
