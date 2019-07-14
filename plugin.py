@@ -55,6 +55,49 @@ class R2ScrollArea(QScrollArea):
         self.label.setText(text)
 
 
+class R2Database:
+    def __init__(self):
+        self.functions_analysis = {}
+        self.graphs = {}
+        self.decompilations = {}
+
+    def get_decompilation(self, address):
+        if isinstance(address, int):
+            address = hex(address)
+        if address in self.decompilations:
+            return self.decompilations[address]
+        return None
+
+    def get_function_info(self, address):
+        if isinstance(address, int):
+            address = hex(address)
+        if address in self.functions_analysis:
+            return self.functions_analysis[address]
+        return None
+
+    def get_graph(self, address):
+        if isinstance(address, int):
+            address = hex(address)
+        if address in self.graphs:
+            return self.graphs[address]
+        return None
+
+    def put_decompilation(self, address, decompilitaiton):
+        if isinstance(address, int):
+            address = hex(address)
+        self.decompilations[address] = decompilitaiton
+
+    def put_function_info(self, address, info):
+        if isinstance(address, int):
+            address = hex(address)
+        self.functions_analysis[address] = info
+
+    def put_graph(self, address, graph):
+        if isinstance(address, int):
+            address = hex(address)
+        self.graphs[address] = graph
+
+
 class R2Analysis(QThread):
     onR2AnalysisFinished = pyqtSignal(list, name='onR2AnalysisFinished')
 
@@ -64,10 +107,18 @@ class R2Analysis(QThread):
         self._dwarf_range = dwarf_range
 
     def run(self):
+        function_prologue = int(self._pipe.cmd('?v $F'), 16)
+        if function_prologue > 0:
+            function_info = self._pipe.r2_database.get_function_info(function_prologue)
+            if function_info is not None:
+                self.onR2AnalysisFinished.emit([self._dwarf_range, function_info])
+                return
+
         self._pipe.cmd('af')
         function_info = self._pipe.cmdj('afij')
         if len(function_info) > 0:
             function_info = function_info[0]
+            self._pipe.r2_database.put_function_info(function_prologue, function_info)
 
         self.onR2AnalysisFinished.emit([self._dwarf_range, function_info])
 
@@ -78,10 +129,17 @@ class R2Graph(QThread):
     def __init__(self, pipe):
         super(R2Graph, self).__init__()
         self._pipe = pipe
-        self.decompile = False
 
     def run(self):
+        function_prologue = int(self._pipe.cmd('?v $F'), 16)
+        if function_prologue > 0:
+            graph = self._pipe.r2_database.get_graph(function_prologue)
+            if graph is not None:
+                self.onR2Graph.emit([graph])
+                return
+
         graph = self._pipe.cmd('agf')
+        self._pipe.r2_database.put_graph(function_prologue, graph)
         self.onR2Graph.emit([graph])
 
 
@@ -94,6 +152,13 @@ class R2Decompiler(QThread):
         self._with_r2dec = with_r2dec
 
     def run(self):
+        function_prologue = int(self._pipe.cmd('?v $F'), 16)
+        if function_prologue > 0:
+            decompile_data = self._pipe.r2_database.get_decompilation(function_prologue)
+            if decompile_data is not None:
+                self.onR2Decompiler.emit([decompile_data])
+                return
+
         if self._with_r2dec:
             decompile_data = self._pipe.cmd('pddo')
         else:
@@ -102,6 +167,7 @@ class R2Decompiler(QThread):
         # todo: wait for proper fix
         decompile_data = decompile_data.replace('#000', '#fff')
 
+        self._pipe.r2_database.put_decompilation(function_prologue, decompile_data)
         self.onR2Decompiler.emit([decompile_data])
 
 
@@ -109,6 +175,7 @@ class R2Pipe(QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.r2_database = R2Database()
         self.process = None
         self._working = False
 
@@ -168,7 +235,10 @@ class R2Pipe(QObject):
                 time.sleep(0.001)
 
         self._working = False
-        return output.decode('utf-8', errors='ignore')
+        output = output.decode('utf-8', errors='ignore')
+        if output.endswith('\n'):
+            output = output[:-1]
+        return output
 
 
 class Plugin:
@@ -268,7 +338,7 @@ class Plugin:
         num_instructions = 0
         if 'offset' in function_info:
             dwarf_range.start_offset = function_info['offset'] - dwarf_range.base
-            num_instructions = int(self.pipe.cmd('pi~?')[:-1])
+            num_instructions = int(self.pipe.cmd('pi~?'))
         self.disassembly_view.disasm_view.disassemble(dwarf_range, num_instructions=num_instructions)
 
         if 'callrefs' in function_info:
@@ -317,6 +387,16 @@ class Plugin:
                 '<pre>' + decompile_data + '</pre>')
             r2_decompiler_view.verticalScrollBar().triggerAction(QScrollBar.SliderToMinimum)
 
+    def _on_hook_menu(self, menu, address):
+        menu.addSeparator()
+        r2_menu = menu.addMenu('r2')
+
+        graph = r2_menu.addAction('graph view', self.show_graph_view)
+        decompile = r2_menu.addAction('decompile', self.show_decompiler_view)
+        if address == -1:
+            graph.setEnabled(False)
+            decompile.setEnabled(False)
+
     def _on_receive_cmd(self, args):
         message, data = args
         if 'payload' in message:
@@ -364,11 +444,7 @@ class Plugin:
             self.disassembly_view.setStretchFactor(0, 1)
             self.disassembly_view.setStretchFactor(1, 5)
 
-            r2_menu = QMenu('r2')
-            r2_menu.addAction('graph view', self.show_graph_view)
-            r2_menu.addAction('decompile', self.show_decompiler_view)
-
-            self.disassembly_view.disasm_view.menu_extra_menu.append(r2_menu)
+            self.disassembly_view.disasm_view.menu_extra_menu_hooks.append(self._on_hook_menu)
 
     def show_graph_view(self):
         if self._working:
