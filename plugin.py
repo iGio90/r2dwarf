@@ -341,7 +341,6 @@ class Plugin:
 
         self._prefs = Prefs()
         self.pipe = None
-        self.js_api_pipe = None
         self.current_seek = ''
         self.with_r2dec = False
         self._working = False
@@ -353,6 +352,7 @@ class Plugin:
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
 
     def _create_pipe(self):
+        self.current_seek = ''
         self.pipe = self._open_pipe()
 
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
@@ -360,9 +360,6 @@ class Plugin:
         if r2_decompilers and 'pdd' in r2_decompilers:
             self.with_r2dec = True
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
-
-    def _create_js_api_pipe(self):
-        self.js_api_pipe = self._open_pipe()
 
     def _open_pipe(self):
         device = self.app.dwarf.device
@@ -518,12 +515,12 @@ class Plugin:
         if 'payload' in message:
             payload = message['payload']
             if payload.startswith('r2 '):
-                if self.js_api_pipe is None:
-                    self._create_js_api_pipe()
+                if self.pipe is None:
+                    self._create_pipe()
 
                 cmd = message['payload'][3:]
                 try:
-                    result = self.js_api_pipe.cmd(cmd)
+                    result = self.pipe.cmd(cmd)
                     self.app.dwarf._script.post({"type": 'r2', "payload": result})
                 except:
                     self.app.dwarf._script.post({"type": 'r2', "payload": None})
