@@ -484,6 +484,9 @@ class Plugin:
                 self.disassembly_view.decompilation_view = R2ScrollArea()
             r2_decompiler_view = self.disassembly_view.decompilation_view
             self.disassembly_view.addWidget(self.disassembly_view.decompilation_view)
+            if decompile_data is not None:
+                r2_decompiler_view.setText(
+                    '<pre>' + decompile_data + '</pre>')
         else:
             r2_decompiler_view = QPlainTextEdit()
             r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -491,10 +494,9 @@ class Plugin:
             self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
             index = self.app.main_tabs.indexOf(r2_decompiler_view)
             self.app.main_tabs.setCurrentIndex(index)
-
-        if decompile_data is not None:
-            r2_decompiler_view.setText(
-                '<pre>' + decompile_data + '</pre>')
+            if decompile_data is not None:
+                r2_decompiler_view.appendHtml(
+                    '<pre>' + decompile_data + '</pre>')
 
     def _on_hook_menu(self, menu, address):
         menu.addSeparator()
