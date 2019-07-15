@@ -355,14 +355,21 @@ class Plugin:
         self.current_seek = ''
         self.pipe = self._open_pipe()
 
+        if self.pipe is None:
+            return None
+
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
         r2_decompilers = r2_decompilers.split()
         if r2_decompilers and 'pdd' in r2_decompilers:
             self.with_r2dec = True
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
+        return self.pipe
 
     def _open_pipe(self):
         device = self.app.dwarf.device
+
+        if device is None:
+            return None
 
         pipe = R2Pipe()
         pipe.onPipeBroken.connect(self._on_pipe_error)
@@ -388,20 +395,6 @@ class Plugin:
         pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
             r2arch, r2bits, self.app.dwarf.platform))
         return pipe
-
-    def _on_apply_context(self, context_data):
-        if self.pipe is None:
-            self._create_pipe()
-
-        is_java = 'is_java' in context_data and context_data['is_java']
-
-        if not is_java:
-            if 'context' in context_data:
-                native_context = context_data['context']
-                pc = native_context['pc']['value']
-                if self.current_seek != pc:
-                    self.current_seek = pc
-                    self.pipe.cmd('s %s' % self.current_seek)
 
     def _on_disassemble(self, dwarf_range):
         if self.pipe is None:
@@ -529,12 +522,13 @@ class Plugin:
 
     def _on_session_created(self):
         self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
-        self.app.dwarf.onApplyContext.connect(self._on_apply_context)
 
         self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
         self.console.onCommandExecute.connect(self.on_r2_command)
 
         self.app.main_tabs.addTab(self.console, 'r2')
+
+        self._create_pipe()
 
     def _on_session_stopped(self):
         # TODO: cleanup the stuff
@@ -599,6 +593,9 @@ class Plugin:
             self.r2graph.start()
 
     def on_r2_command(self, cmd):
+        if self.pipe is None:
+            self._create_pipe()
+
         if cmd == 'clear' or cmd == 'clean':
             self.console.clear()
         else:
