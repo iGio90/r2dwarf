@@ -333,6 +333,15 @@ class Plugin:
         return self.menu_items
 
     def __get_agent__(self):
+        # we create the first pipe here to be safe that the r2 agent is loaded before the first breakpoint
+        # i.e if we start dwarf targetting a package from args and a script breaking at first open
+        # dwarf will hang because r2frida try to load it's agent and frida turn to use some api uth which are
+        # not usable before the breakpoint quit
+        # __get_agent__ is request just after our agent load and it solved all the things
+        # still not the best solution as if the pipe got broken for some reason and we re-attempt to create it
+        # while we are in a bkp we will face the same shit
+        self._create_pipe()
+
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent.js'), 'r') as f:
             return f.read()
 
@@ -527,8 +536,6 @@ class Plugin:
         self.console.onCommandExecute.connect(self.on_r2_command)
 
         self.app.main_tabs.addTab(self.console, 'r2')
-
-        self._create_pipe()
 
     def _on_session_stopped(self):
         # TODO: cleanup the stuff

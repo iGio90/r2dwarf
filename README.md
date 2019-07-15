@@ -25,6 +25,7 @@ r2pm -ci r2dec
 ### Features
 
 * panel with r2 console
+* js api to use r2 commands in frida agent
 * disasm view enriched with graph view, decompiler, xrefs and data refs
 * option to enhance UI for widescreen monitors
 
