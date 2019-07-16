@@ -19,6 +19,7 @@ import os
 import time
 from subprocess import *
 
+from PyQt5.Qt import QMenu, QCursor
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QSizePolicy, QSplitter, QScrollArea, QScroller, QFrame, QLabel, QPlainTextEdit, \
@@ -40,6 +41,30 @@ KEY_WIDESCREEN_MODE = 'r2_widescreen'
 ###########
 # WIDGETS #
 ###########
+
+class R2DecompiledText(QPlainTextEdit):
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+
+    def mousePressEvent(self, event):
+        mouse_btn = event.button()
+        mouse_pos = event.pos()
+
+        clicked_offset_link = self.anchorAt(mouse_pos)
+        if clicked_offset_link:
+            if clicked_offset_link.startswith('offset:'):
+                if mouse_btn == Qt.LeftButton:
+                    _offset = clicked_offset_link.split(':')
+                    self.doStuff(_offset[1])
+                elif mouse_btn == Qt.RightButton:
+                    _offset = clicked_offset_link.split(':')
+                    menu = QMenu()
+                    menu.addAction('Copy Offset', lambda: utils.copy_hex_to_clipboard(_offset))
+                    menu.exec_(QCursor.pos())
+
+        return super().mousePressEvent(event)
+
 class R2ScrollArea(QScrollArea):
     def __init__(self, *__args):
         super().__init__(*__args)
@@ -505,14 +530,14 @@ class Plugin:
         if decompile_data is not None:
             if self._prefs.get(KEY_WIDESCREEN_MODE, False):
                 if self.disassembly_view.decompilation_view is None:
-                    self.disassembly_view.decompilation_view = R2ScrollArea()
+                    self.disassembly_view.decompilation_view = R2DecompiledText()
                 r2_decompiler_view = self.disassembly_view.decompilation_view
                 self.disassembly_view.addWidget(self.disassembly_view.decompilation_view)
                 if decompile_data is not None:
                     r2_decompiler_view.setText(
                         '<pre>' + decompile_data + '</pre>')
             else:
-                r2_decompiler_view = QPlainTextEdit()
+                r2_decompiler_view = R2DecompiledText()
                 self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
                 index = self.app.main_tabs.indexOf(r2_decompiler_view)
                 self.app.main_tabs.setCurrentIndex(index)
