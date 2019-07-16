@@ -22,7 +22,7 @@ from subprocess import *
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QSize
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QSizePolicy, QSplitter, QScrollArea, QScroller, QFrame, QLabel, QPlainTextEdit, \
-    QScrollBar, QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox
+    QAction, QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox
 
 from lib import utils
 from lib.prefs import Prefs
@@ -223,9 +223,6 @@ class R2Decompiler(QThread):
         else:
             decompile_data = self._pipe.cmd('pdc')
 
-        # todo: wait for proper fix
-        decompile_data = decompile_data.replace('#000', '#fff')
-
         self._pipe.r2_database.put_decompilation(function_prologue, decompile_data)
         self.onR2Decompiler.emit([decompile_data])
 
@@ -367,6 +364,8 @@ class Plugin:
         if self.pipe is None:
             return None
 
+        self.pipe.cmd('.\\i*')
+
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
         r2_decompilers = r2_decompilers.split()
         if r2_decompilers and 'pdd' in r2_decompilers:
@@ -389,20 +388,6 @@ class Plugin:
             pipe.open('frida://%d' % self.app.dwarf.pid)
         else:
             raise Exception('unsupported device type %s' % device.type)
-
-        r2arch = self.app.dwarf.arch
-        r2bits = 32
-        if r2arch == 'arm64':
-            r2arch = 'arm'
-            r2bits = 64
-        elif r2arch == 'x64':
-            r2arch = 'x86'
-            r2bits = 64
-        elif r2arch == 'ia32':
-            r2arch = 'x86'
-
-        pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s' % (
-            r2arch, r2bits, self.app.dwarf.platform))
         return pipe
 
     def _on_disassemble(self, dwarf_range):
@@ -480,23 +465,20 @@ class Plugin:
         self._working = False
 
         decompile_data = data[0]
-
-        if self._prefs.get(KEY_WIDESCREEN_MODE, False):
-            if self.disassembly_view.decompilation_view is None:
-                self.disassembly_view.decompilation_view = R2ScrollArea()
-            r2_decompiler_view = self.disassembly_view.decompilation_view
-            self.disassembly_view.addWidget(self.disassembly_view.decompilation_view)
-            if decompile_data is not None:
-                r2_decompiler_view.setText(
-                    '<pre>' + decompile_data + '</pre>')
-        else:
-            r2_decompiler_view = QPlainTextEdit()
-            r2_decompiler_view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            r2_decompiler_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
-            index = self.app.main_tabs.indexOf(r2_decompiler_view)
-            self.app.main_tabs.setCurrentIndex(index)
-            if decompile_data is not None:
+        if decompile_data is not None:
+            if self._prefs.get(KEY_WIDESCREEN_MODE, False):
+                if self.disassembly_view.decompilation_view is None:
+                    self.disassembly_view.decompilation_view = R2ScrollArea()
+                r2_decompiler_view = self.disassembly_view.decompilation_view
+                self.disassembly_view.addWidget(self.disassembly_view.decompilation_view)
+                if decompile_data is not None:
+                    r2_decompiler_view.setText(
+                        '<pre>' + decompile_data + '</pre>')
+            else:
+                r2_decompiler_view = QPlainTextEdit()
+                self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
+                index = self.app.main_tabs.indexOf(r2_decompiler_view)
+                self.app.main_tabs.setCurrentIndex(index)
                 r2_decompiler_view.appendHtml(
                     '<pre>' + decompile_data + '</pre>')
 
