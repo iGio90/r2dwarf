@@ -26,6 +26,8 @@ from PyQt5.QtWidgets import QSizePolicy, QSplitter, QScrollArea, QScroller, QFra
 
 from lib import utils
 from lib.prefs import Prefs
+from lib.range import Range
+from ui.dialog_input import InputDialog
 from ui.widget_console import DwarfConsoleWidget
 from ui.widgets.list_view import DwarfListView
 
@@ -116,7 +118,7 @@ class OptionsDialog(QDialog):
 ################
 class R2Database:
     def __init__(self):
-        self.functions_analysis = {}
+        self.functions_info = {}
         self.graphs = {}
         self.decompilations = {}
 
@@ -130,8 +132,8 @@ class R2Database:
     def get_function_info(self, address):
         if isinstance(address, int):
             address = hex(address)
-        if address in self.functions_analysis:
-            return self.functions_analysis[address]
+        if address in self.functions_info:
+            return self.functions_info[address]
         return None
 
     def get_graph(self, address):
@@ -149,7 +151,7 @@ class R2Database:
     def put_function_info(self, address, info):
         if isinstance(address, int):
             address = hex(address)
-        self.functions_analysis[address] = info
+        self.functions_info[address] = info
 
     def put_graph(self, address, graph):
         if isinstance(address, int):
@@ -158,7 +160,7 @@ class R2Database:
 
 
 class R2Analysis(QThread):
-    onR2AnalysisFinished = pyqtSignal(list, name='onR2AnalysisFinished')
+    onR2AnalysisFinished = pyqtSignal(name='onR2AnalysisFinished')
 
     def __init__(self, pipe, dwarf_range):
         super(R2Analysis, self).__init__()
@@ -166,12 +168,33 @@ class R2Analysis(QThread):
         self._dwarf_range = dwarf_range
 
     def run(self):
+        self._pipe.cmd('e anal.from = %d; e anal.to = %d; e anal.in = raw' % (
+            self._dwarf_range.base, self._dwarf_range.tail))
+        self._pipe.cmd('aa')
+        self._pipe.cmd('aac')
+        self._pipe.cmd('aar')
+        self.onR2AnalysisFinished.emit()
+
+
+class R2FunctionAnalysis(QThread):
+    onR2FunctionAnalysisFinished = pyqtSignal(list, name='onR2FunctionAnalysisFinished')
+
+    def __init__(self, pipe, dwarf_range):
+        super(R2FunctionAnalysis, self).__init__()
+        self._pipe = pipe
+        self._dwarf_range = dwarf_range
+
+    def run(self):
         function_prologue = int(self._pipe.cmd('?v $F'), 16)
+        function_end = int(self._pipe.cmd('?v $FE'), 16)
         if function_prologue > 0:
             function_info = self._pipe.r2_database.get_function_info(function_prologue)
             if function_info is not None:
-                self.onR2AnalysisFinished.emit([self._dwarf_range, function_info])
+                self.onR2FunctionAnalysisFinished.emit([self._dwarf_range, function_info])
                 return
+
+        self._pipe.cmd('e anal.from = %d; e anal.to = %d; e anal.in = raw' % (
+            function_prologue, function_end))
 
         self._pipe.cmd('af')
         function_info = self._pipe.cmdj('afij')
@@ -179,7 +202,7 @@ class R2Analysis(QThread):
             function_info = function_info[0]
             self._pipe.r2_database.put_function_info(function_prologue, function_info)
 
-        self.onR2AnalysisFinished.emit([self._dwarf_range, function_info])
+        self.onR2FunctionAnalysisFinished.emit([self._dwarf_range, function_info])
 
 
 class R2Graph(QThread):
@@ -409,11 +432,22 @@ class Plugin:
         self.app.show_progress('r2: analyzing function')
         self._working = True
 
-        self.r2analysis = R2Analysis(self.pipe, dwarf_range)
-        self.r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
-        self.r2analysis.start()
+        self.r2function_analysis = R2FunctionAnalysis(self.pipe, dwarf_range)
+        self.r2function_analysis.onR2FunctionAnalysisFinished.connect(self._on_finish_function_analysis)
+        self.r2function_analysis.start()
 
-    def _on_finish_analysis(self, data):
+        if self.call_refs_model is not None:
+            self.call_refs_model.setRowCount(0)
+        if self.code_xrefs_model is not None:
+            self.code_xrefs_model.setRowCount(0)
+
+    def _on_finish_analysis(self):
+        self.app.hide_progress()
+        self._working = False
+
+        self.refresh_functions_list()
+
+    def _on_finish_function_analysis(self, data):
         self.app.hide_progress()
         self._working = False
 
@@ -424,7 +458,10 @@ class Plugin:
         if 'offset' in function_info:
             dwarf_range.start_offset = function_info['offset'] - dwarf_range.base
             num_instructions = int(self.pipe.cmd('pi~?'))
+
         self.disassembly_view.disasm_view.start_disassemble(dwarf_range, num_instructions=num_instructions)
+
+        self.refresh_functions_list()
 
         if 'callrefs' in function_info:
             for ref in function_info['callrefs']:
@@ -486,8 +523,12 @@ class Plugin:
         menu.addSeparator()
         r2_menu = menu.addMenu('r2')
 
-        graph = r2_menu.addAction('graph view', self.show_graph_view)
-        decompile = r2_menu.addAction('decompile', self.show_decompiler_view)
+        analysis_menu = r2_menu.addMenu('analysis')
+        analysis_menu.addAction('analyze range', lambda: self.analyze_range(address))
+
+        view_menu = r2_menu.addMenu('view')
+        graph = view_menu.addAction('graph view', self.show_graph_view)
+        decompile = view_menu.addAction('decompile', self.show_decompiler_view)
         if address == -1:
             graph.setEnabled(False)
             decompile.setEnabled(False)
@@ -533,8 +574,13 @@ class Plugin:
             self.disassembly_view.disasm_view.run_default_disassembler = False
             self.disassembly_view.disasm_view.onDisassemble.connect(self._on_disassemble)
 
-            r2_info = QSplitter()
-            r2_info.setOrientation(Qt.Vertical)
+            r2_functions_list = DwarfListView()
+            self.r2_functions_list_model = QStandardItemModel(0, 1)
+            self.r2_functions_list_model.setHeaderData(0, Qt.Horizontal, 'functions')
+            r2_functions_list.setModel(self.r2_functions_list_model)
+
+            r2_function_refs = QSplitter()
+            r2_function_refs.setOrientation(Qt.Vertical)
 
             call_refs = DwarfListView()
             self.call_refs_model = QStandardItemModel(0, 3)
@@ -550,14 +596,42 @@ class Plugin:
             self.code_xrefs_model.setHeaderData(2, Qt.Horizontal, '')
             code_xrefs.setModel(self.code_xrefs_model)
 
-            r2_info.addWidget(call_refs)
-            r2_info.addWidget(code_xrefs)
+            r2_function_refs.addWidget(call_refs)
+            r2_function_refs.addWidget(code_xrefs)
 
-            self.disassembly_view.insertWidget(0, r2_info)
+            self.disassembly_view.insertWidget(0, r2_functions_list)
+            self.disassembly_view.insertWidget(1, r2_function_refs)
+
             self.disassembly_view.setStretchFactor(0, 1)
-            self.disassembly_view.setStretchFactor(1, 5)
+            self.disassembly_view.setStretchFactor(1, 1)
+            self.disassembly_view.setStretchFactor(2, 5)
 
             self.disassembly_view.disasm_view.menu_extra_menu_hooks.append(self._on_hook_menu)
+
+    def analyze_range(self, hint_address=0):
+        if self._working:
+            utils.show_message_box('please wait for the other works to finish')
+        else:
+            ptr, input_ = InputDialog.input_pointer(input_content=hex(hint_address))
+            r = Range(self.app.dwarf, Range.SOURCE_TARGET)
+            r.init_with_address(ptr)
+
+            self.app.show_progress('r2: running analysis')
+            self._working = True
+
+            self.r2analysis = R2Analysis(self.pipe, r)
+            self.r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
+            self.r2analysis.start()
+
+    def refresh_functions_list(self):
+        if self.pipe is None:
+            self._create_pipe()
+
+        for function_address in sorted(self.pipe.r2_database.functions_info):
+            function_info = self.pipe.r2_database.functions_info[function_address]
+            item = QStandardItem(function_info['name'])
+            item.setData(function_info['offset'], Qt.UserRole + 2)
+            self.r2_functions_list_model.appendRow([item])
 
     def show_decompiler_view(self):
         if self._working:
