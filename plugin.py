@@ -59,6 +59,7 @@ class R2DecompiledText(QPlainTextEdit):
                     self.doStuff(_offset[1])
                 elif mouse_btn == Qt.RightButton:
                     _offset = clicked_offset_link.split(':')
+                    _offset = _offset[1]
                     menu = QMenu()
                     menu.addAction('Copy Offset', lambda: utils.copy_hex_to_clipboard(_offset))
                     menu.exec_(QCursor.pos())
