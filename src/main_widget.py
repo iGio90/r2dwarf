@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QSplitter
 
-from plugins.r2.src.e_vars_list import EVarsList
+from plugins.r2dwarf.src.e_vars_list import EVarsList
 from ui.widget_console import DwarfConsoleWidget
 
 

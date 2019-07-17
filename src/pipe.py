@@ -9,7 +9,7 @@ from lib import utils
 from subprocess import *
 
 from lib.range import Range
-from plugins.r2.src.analysis import R2Analysis
+from plugins.r2dwarf.src.analysis import R2Analysis
 
 
 class R2AsyncGetRange(QThread):
