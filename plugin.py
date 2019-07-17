@@ -127,6 +127,9 @@ class Plugin:
         if self.pipe is None:
             self._create_pipe()
 
+        self.disassembly_view.disasm_view._lines.clear()
+        self.disassembly_view.disasm_view.viewport().update()
+
         if self.disassembly_view.decompilation_view is not None:
             self.disassembly_view.decompilation_view.setParent(None)
             self.disassembly_view.decompilation_view = None
