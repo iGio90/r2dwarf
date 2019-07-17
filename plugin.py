@@ -25,6 +25,7 @@ from lib.prefs import Prefs
 from plugins.r2.src.decompiler import R2DecompiledText, R2Decompiler
 from plugins.r2.src.dialog_options import OptionsDialog, KEY_WIDESCREEN_MODE
 from plugins.r2.src.graph import R2Graph
+from plugins.r2.src.main_widget import R2Widget
 from plugins.r2.src.pipe import R2Pipe
 from plugins.r2.src.scrollarea import R2ScrollArea
 from ui.widget_console import DwarfConsoleWidget
@@ -79,6 +80,8 @@ class Plugin:
         self.with_r2dec = False
         self._working = False
 
+        self.r2_widget = None
+
         self.menu_items = []
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
@@ -94,6 +97,9 @@ class Plugin:
 
         if self.pipe is None:
             return None
+
+        if self.r2_widget is not None:
+            self.pipe.onUpdateVars.connect(self.r2_widget.refresh_e_vars_list)
 
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
         if r2_decompilers is None:
@@ -267,10 +273,10 @@ class Plugin:
                     self.app.dwarf._script.post({"type": 'r2', "payload": None})
 
     def _on_session_created(self):
-        self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
-        self.console.onCommandExecute.connect(self.on_r2_command)
-
-        self.app.main_tabs.addTab(self.console, 'r2')
+        self.r2_widget = R2Widget(self)
+        if self.pipe is not None:
+            self.pipe.onUpdateVars.connect(self.r2_widget.refresh_e_vars_list)
+        self.app.main_tabs.addTab(self.r2_widget, 'r2')
 
     def _on_session_stopped(self):
         # TODO: cleanup the stuff
@@ -335,21 +341,3 @@ class Plugin:
             self.r2graph = R2Graph(self.pipe)
             self.r2graph.onR2Graph.connect(self._on_finish_graph)
             self.r2graph.start()
-
-    def on_r2_command(self, cmd):
-        if self.pipe is None:
-            self._create_pipe()
-
-        if cmd == 'clear' or cmd == 'clean':
-            self.console.clear()
-        else:
-            if self._working:
-                self.console.log('please wait for other works to finish', time_prefix=False)
-            else:
-                try:
-                    result = self.pipe.cmd(cmd)
-                    self.console.log(result, time_prefix=False)
-                except BrokenPipeError:
-                    self.console.log('pipe is broken. recreating...', time_prefix=False)
-                    self._create_pipe()
-                    self.pipe.cmd('s %s' % self.current_seek)

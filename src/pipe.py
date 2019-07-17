@@ -35,6 +35,7 @@ class R2AsyncGetRange(QThread):
 
 class R2Pipe(QObject):
     onPipeBroken = pyqtSignal(str, name='onPipeBroken')
+    onUpdateVars = pyqtSignal(name='onUpdateVars')
 
     def __init__(self, plugin, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -77,6 +78,8 @@ class R2Pipe(QObject):
                 ptr = utils.parse_ptr(cmd[2:])
                 self.plugin.current_seek = hex(ptr)
                 self.map_ptr(self.plugin.current_seek)
+            elif cmd.startswith('e '):
+                self.onUpdateVars.emit()
             return ret
         except Exception as e:
             self._working = False
