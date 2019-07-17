@@ -2,6 +2,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QSplitter
 
+from plugins.r2.src.e_vars_list import EVarsList
 from ui.widget_console import DwarfConsoleWidget
 from ui.widgets.list_view import DwarfListView
 
@@ -16,14 +17,10 @@ class R2Widget(QSplitter):
         self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
         self.console.onCommandExecute.connect(self.on_r2_command)
 
-        e_list = DwarfListView()
-        self.e_list_model = QStandardItemModel(0, 2)
-        self.e_list_model.setHeaderData(0, Qt.Horizontal, 'e vars')
-        self.e_list_model.setHeaderData(1, Qt.Horizontal, '')
-        e_list.setModel(self.e_list_model)
+        self.e_list = EVarsList(self.plugin)
 
         self.addWidget(self.console)
-        self.addWidget(e_list)
+        self.addWidget(self.e_list)
 
         self.setStretchFactor(0, 4)
         self.setStretchFactor(1, 1)
@@ -31,15 +28,7 @@ class R2Widget(QSplitter):
         self.refresh_e_vars_list()
 
     def refresh_e_vars_list(self):
-        if self.plugin.pipe is not None:
-            self.e_list_model.setRowCount(0)
-            e_vars = self.plugin.pipe.cmdj('ej')
-            for key in e_vars:
-                var_name = QStandardItem(key)
-                var_value = QStandardItem(str(e_vars[key]))
-                var_value.setEditable(True)
-
-                self.e_list_model.appendRow([var_name, var_value])
+        self.e_list.refresh_e_vars_list()
 
     def on_r2_command(self, cmd):
         if self.plugin.pipe is None:
