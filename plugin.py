@@ -157,6 +157,8 @@ class Plugin:
                 return
 
         function_info = self.pipe.cmdj('afij')
+        if len(function_info) > 0:
+            function_info = function_info[0]
 
         num_instructions = 0
         if 'offset' in function_info:
