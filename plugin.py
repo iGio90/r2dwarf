@@ -142,49 +142,6 @@ class OptionsDialog(QDialog):
 ################
 # CORE CLASSES #
 ################
-class R2Database:
-    def __init__(self):
-        self.functions_info = {}
-        self.graphs = {}
-        self.decompilations = {}
-
-    def get_decompilation(self, address):
-        if isinstance(address, int):
-            address = hex(address)
-        if address in self.decompilations:
-            return self.decompilations[address]
-        return None
-
-    def get_function_info(self, address):
-        if isinstance(address, int):
-            address = hex(address)
-        if address in self.functions_info:
-            return self.functions_info[address]
-        return None
-
-    def get_graph(self, address):
-        if isinstance(address, int):
-            address = hex(address)
-        if address in self.graphs:
-            return self.graphs[address]
-        return None
-
-    def put_decompilation(self, address, decompilitaiton):
-        if isinstance(address, int):
-            address = hex(address)
-        self.decompilations[address] = decompilitaiton
-
-    def put_function_info(self, address, info):
-        if isinstance(address, int):
-            address = hex(address)
-        self.functions_info[address] = info
-
-    def put_graph(self, address, graph):
-        if isinstance(address, int):
-            address = hex(address)
-        self.graphs[address] = graph
-
-
 class R2Analysis(QThread):
     onR2AnalysisFinished = pyqtSignal(name='onR2AnalysisFinished')
 
@@ -211,23 +168,30 @@ class R2FunctionAnalysis(QThread):
         self._dwarf_range = dwarf_range
 
     def run(self):
-        function_prologue = int(self._pipe.cmd('?v $F'), 16)
-        function_end = int(self._pipe.cmd('?v $FE'), 16)
-        if function_prologue > 0:
-            function_info = self._pipe.r2_database.get_function_info(function_prologue)
-            if function_info is not None:
-                self.onR2FunctionAnalysisFinished.emit([self._dwarf_range, function_info])
-                return
+        function_prologue = self._pipe.cmd('?v $F')
+        function_end = self._pipe.cmd('?v $FE')
 
-        self._pipe.cmd('e anal.from = %d; e anal.to = %d; e anal.in = raw' % (
-            function_prologue, function_end))
+        function = None
+
+        if self._dwarf_range.module_info is not None:
+            if function_prologue in self._dwarf_range.module_info.functions_map:
+                function = self._dwarf_range.module_info.functions_map[function_prologue]
+                try:
+                    info = function.r2_info
+                    if info:
+                        self.onR2FunctionAnalysisFinished.emit([self._dwarf_range, info])
+                        return
+                except:
+                    pass
+
+        self._pipe.cmd('e anal.from = %s; e anal.to = %s; e anal.in = raw' % (function_prologue, function_end))
 
         self._pipe.cmd('af')
         function_info = self._pipe.cmdj('afij')
         if len(function_info) > 0:
             function_info = function_info[0]
-            self._pipe.r2_database.put_function_info(function_prologue, function_info)
-
+            if function is not None:
+                function.r2_info = function_info
         self.onR2FunctionAnalysisFinished.emit([self._dwarf_range, function_info])
 
 
@@ -240,14 +204,22 @@ class R2Graph(QThread):
 
     def run(self):
         function_prologue = int(self._pipe.cmd('?v $F'), 16)
-        if function_prologue > 0:
-            graph = self._pipe.r2_database.get_graph(function_prologue)
-            if graph is not None:
-                self.onR2Graph.emit([graph])
-                return
+        function = None
+
+        if self._dwarf_range.module_info is not None:
+            if function_prologue in self._dwarf_range.module_info.functions_map:
+                function = self._dwarf_range.module_info.functions_map[function_prologue]
+                try:
+                    graph = function.r2_graph
+                    if graph:
+                        self.onR2Graph.emit([graph])
+                        return
+                except:
+                    pass
 
         graph = self._pipe.cmd('agf')
-        self._pipe.r2_database.put_graph(function_prologue, graph)
+        if function is not None:
+            function.r2_graph = graph
         self.onR2Graph.emit([graph])
 
 
@@ -261,18 +233,26 @@ class R2Decompiler(QThread):
 
     def run(self):
         function_prologue = int(self._pipe.cmd('?v $F'), 16)
-        if function_prologue > 0:
-            decompile_data = self._pipe.r2_database.get_decompilation(function_prologue)
-            if decompile_data is not None:
-                self.onR2Decompiler.emit([decompile_data])
-                return
+        function = None
+
+        if self._dwarf_range.module_info is not None:
+            if function_prologue in self._dwarf_range.module_info.functions_map:
+                function = self._dwarf_range.module_info.functions_map[function_prologue]
+                try:
+                    decompile_data = function.r2_decompile_data
+                    if decompile_data:
+                        self.onR2Decompiler.emit([decompile_data])
+                        return
+                except:
+                    pass
 
         if self._with_r2dec:
             decompile_data = self._pipe.cmd('pddo')
         else:
             decompile_data = self._pipe.cmd('pdc')
 
-        self._pipe.r2_database.put_decompilation(function_prologue, decompile_data)
+        if function is not None:
+            function.r2_decompile_data = decompile_data
         self.onR2Decompiler.emit([decompile_data])
 
 
@@ -282,7 +262,6 @@ class R2Pipe(QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.r2_database = R2Database()
         self.process = None
         self._working = False
 
@@ -299,17 +278,18 @@ class R2Pipe(QObject):
 
         if os.name == 'nt':
             r2e += '.exe'
-        cmd = [r2e, "-q0", filename]
+        cmd = [r2e, "-w", "-q0", filename]
         try:
             self.process = Popen(cmd, shell=False, stdin=PIPE, stdout=PIPE, bufsize=0)
         except Exception as e:
-            print(e)  # TODO: handle the stuff (unable to attach)
+            self.onPipeBroken.emit(str(e))
         self.process.stdout.read(1)
 
     def cmd(self, cmd):
         try:
             return self._cmd_process(cmd)
         except Exception as e:
+            self._working = False
             self.onPipeBroken.emit(str(e))
         return None
 
@@ -394,6 +374,9 @@ class Plugin:
     def __init__(self, app):
         self.app = app
 
+        # block the creation of pipe on fatal errors
+        self.pipe_locker = False
+
         self._prefs = Prefs()
         self.pipe = None
         self.current_seek = ''
@@ -407,6 +390,9 @@ class Plugin:
         self.app.onUIElementCreated.connect(self._on_ui_element_created)
 
     def _create_pipe(self):
+        if self.pipe_locker:
+            return None
+
         self.current_seek = ''
         self.pipe = self._open_pipe()
 
@@ -416,6 +402,8 @@ class Plugin:
         self.pipe.cmd('.\\i*')
 
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
+        if r2_decompilers is None:
+            return None
         r2_decompilers = r2_decompilers.split()
         if r2_decompilers and 'pdd' in r2_decompilers:
             self.with_r2dec = True
@@ -450,28 +438,29 @@ class Plugin:
             self.disassembly_view.graph_view.setParent(None)
             self.disassembly_view.graph_view = None
 
-        start_address = hex(dwarf_range.start_address)
-        if self.current_seek != start_address:
-            self.current_seek = start_address
-            self.pipe.cmd('s %s' % self.current_seek)
+        if self.pipe is not None:
+            start_address = hex(dwarf_range.start_address)
+            if self.current_seek != start_address:
+                self.current_seek = start_address
+                self.pipe.cmd('s %s' % self.current_seek)
 
-        self.app.show_progress('r2: analyzing function')
-        self._working = True
+            self.app.show_progress('r2: analyzing function')
+            self._working = True
 
-        self.r2function_analysis = R2FunctionAnalysis(self.pipe, dwarf_range)
-        self.r2function_analysis.onR2FunctionAnalysisFinished.connect(self._on_finish_function_analysis)
-        self.r2function_analysis.start()
+            self.r2function_analysis = R2FunctionAnalysis(self.pipe, dwarf_range)
+            self.r2function_analysis.onR2FunctionAnalysisFinished.connect(self._on_finish_function_analysis)
+            self.r2function_analysis.start()
 
-        if self.call_refs_model is not None:
-            self.call_refs_model.setRowCount(0)
-        if self.code_xrefs_model is not None:
-            self.code_xrefs_model.setRowCount(0)
+            if self.call_refs_model is not None:
+                self.call_refs_model.setRowCount(0)
+            if self.code_xrefs_model is not None:
+                self.code_xrefs_model.setRowCount(0)
+        else:
+            self._on_finish_function_analysis([dwarf_range, {}])
 
     def _on_finish_analysis(self):
         self.app.hide_progress()
         self._working = False
-
-        self.refresh_functions_list()
 
     def _on_finish_function_analysis(self, data):
         self.app.hide_progress()
@@ -486,8 +475,6 @@ class Plugin:
             num_instructions = int(self.pipe.cmd('pi~?'))
 
         self.disassembly_view.disasm_view.start_disassemble(dwarf_range, num_instructions=num_instructions)
-
-        self.refresh_functions_list()
 
         if 'callrefs' in function_info:
             for ref in function_info['callrefs']:
@@ -560,8 +547,13 @@ class Plugin:
             decompile.setEnabled(False)
 
     def _on_pipe_error(self, reason):
-        print('r2: pipe got broken\n%s' % reason)
-        self._create_pipe()
+        should_recreate_pipe = True
+
+        if 'Broken' in reason:
+            should_recreate_pipe = False
+
+        if should_recreate_pipe:
+            self._create_pipe()
 
     def _on_receive_cmd(self, args):
         message, data = args
@@ -600,11 +592,6 @@ class Plugin:
             self.disassembly_view.disasm_view.run_default_disassembler = False
             self.disassembly_view.disasm_view.onDisassemble.connect(self._on_disassemble)
 
-            r2_functions_list = DwarfListView()
-            self.r2_functions_list_model = QStandardItemModel(0, 1)
-            self.r2_functions_list_model.setHeaderData(0, Qt.Horizontal, 'functions')
-            r2_functions_list.setModel(self.r2_functions_list_model)
-
             r2_function_refs = QSplitter()
             r2_function_refs.setOrientation(Qt.Vertical)
 
@@ -625,7 +612,6 @@ class Plugin:
             r2_function_refs.addWidget(call_refs)
             r2_function_refs.addWidget(code_xrefs)
 
-            self.disassembly_view.insertWidget(0, r2_functions_list)
             self.disassembly_view.insertWidget(1, r2_function_refs)
 
             self.disassembly_view.setStretchFactor(0, 1)
@@ -638,26 +624,19 @@ class Plugin:
         if self._working:
             utils.show_message_box('please wait for the other works to finish')
         else:
-            ptr, input_ = InputDialog.input_pointer(input_content=hex(hint_address))
-            r = Range(self.app.dwarf, Range.SOURCE_TARGET)
-            r.init_with_address(ptr)
+            if hint_address < 0:
+                hint_address = 0
+            ptr, input_ = InputDialog.input_pointer(self.app, input_content=hex(hint_address))
+            if ptr > 0:
+                r = Range(self.app.dwarf, Range.SOURCE_TARGET)
+                r.init_with_address(ptr)
 
-            self.app.show_progress('r2: running analysis')
-            self._working = True
+                self.app.show_progress('r2: running analysis')
+                self._working = True
 
-            self.r2analysis = R2Analysis(self.pipe, r)
-            self.r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
-            self.r2analysis.start()
-
-    def refresh_functions_list(self):
-        if self.pipe is None:
-            self._create_pipe()
-
-        for function_address in sorted(self.pipe.r2_database.functions_info):
-            function_info = self.pipe.r2_database.functions_info[function_address]
-            item = QStandardItem(function_info['name'])
-            item.setData(function_info['offset'], Qt.UserRole + 2)
-            self.r2_functions_list_model.appendRow([item])
+                self.r2analysis = R2Analysis(self.pipe, r)
+                self.r2analysis.onR2AnalysisFinished.connect(self._on_finish_analysis)
+                self.r2analysis.start()
 
     def show_decompiler_view(self):
         if self._working:
