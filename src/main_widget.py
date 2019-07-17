@@ -1,10 +1,7 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QSplitter
 
 from plugins.r2.src.e_vars_list import EVarsList
 from ui.widget_console import DwarfConsoleWidget
-from ui.widgets.list_view import DwarfListView
 
 
 class R2Widget(QSplitter):

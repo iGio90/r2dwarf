@@ -1,6 +1,7 @@
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 
+from ui.dialog_input import InputDialog
 from ui.widgets.list_view import DwarfListView
 
 
@@ -26,6 +27,16 @@ class EVarsList(DwarfListView):
         self.e_list_model.setHeaderData(0, Qt.Horizontal, 'e vars')
         self.e_list_model.setHeaderData(1, Qt.Horizontal, '')
         self.setModel(self.e_list_model)
+
+        self.doubleClicked.connect(self._item_double_clicked)
+
+    def _item_double_clicked(self, model_index):
+        row = self.e_list_model.itemFromIndex(model_index).row()
+        item = self.e_list_model.item(row, 0).text()
+        item_val = self.e_list_model.item(row, 1).text()
+        accept, res = InputDialog.input(parent=self.plugin.app, hint=item, input_content=item_val, placeholder=item_val)
+        if accept and len(res) > 0 and self.plugin.pipe is not None:
+            self.plugin.pipe.cmd('e %s = %s' % (item, res))
 
     def refresh_e_vars_list(self):
         if self.plugin.pipe is not None:
