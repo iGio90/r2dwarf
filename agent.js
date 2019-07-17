@@ -7,3 +7,5 @@ global.r2 = function (cmd) {
     op.wait();
     return response;
 };
+
+send('r2 init');

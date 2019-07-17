@@ -16,6 +16,7 @@ Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
 """
 import json
 import os
+import shutil
 import time
 from subprocess import *
 
@@ -65,6 +66,7 @@ class R2DecompiledText(QPlainTextEdit):
                     menu.exec_(QCursor.pos())
 
         return super().mousePressEvent(event)
+
 
 class R2ScrollArea(QScrollArea):
     def __init__(self, *__args):
@@ -151,6 +153,8 @@ class R2Analysis(QThread):
         self._dwarf_range = dwarf_range
 
     def run(self):
+        self._pipe.map(self._dwarf_range)
+        self._pipe.cmd('s %s' % hex(self._dwarf_range.base))
         self._pipe.cmd('e anal.from = %d; e anal.to = %d; e anal.in = raw' % (
             self._dwarf_range.base, self._dwarf_range.tail))
         self._pipe.cmd('aa')
@@ -168,6 +172,8 @@ class R2FunctionAnalysis(QThread):
         self._dwarf_range = dwarf_range
 
     def run(self):
+        self._pipe.map(self._dwarf_range)
+
         function_prologue = self._pipe.cmd('?v $F')
         function_end = self._pipe.cmd('?v $FE')
 
@@ -259,11 +265,18 @@ class R2Decompiler(QThread):
 class R2Pipe(QObject):
     onPipeBroken = pyqtSignal(str, name='onPipeBroken')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, plugin, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.plugin = plugin
+        self.dwarf = plugin.app.dwarf
         self.process = None
         self._working = False
+
+        self.r2_pipe_local_path = os.path.abspath('.r2pipe')
+        if os.path.exists(self.r2_pipe_local_path):
+            shutil.rmtree(self.r2_pipe_local_path)
+        os.mkdir(self.r2_pipe_local_path)
 
         self.close()
 
@@ -273,12 +286,12 @@ class R2Pipe(QObject):
         else:
             utils.do_shell_command("tskill radare2")
 
-    def open(self, filename=''):
+    def open(self):
         r2e = 'radare2'
 
         if os.name == 'nt':
             r2e += '.exe'
-        cmd = [r2e, "-w", "-q0", filename]
+        cmd = [r2e, "-w", "-q0", '-']
         try:
             self.process = Popen(cmd, shell=False, stdin=PIPE, stdout=PIPE, bufsize=0)
         except Exception as e:
@@ -287,7 +300,20 @@ class R2Pipe(QObject):
 
     def cmd(self, cmd):
         try:
-            return self._cmd_process(cmd)
+            ret = self._cmd_process(cmd)
+
+            if cmd.startswith('s '):
+                ptr = utils.parse_ptr(cmd[2:])
+                address_info = self._cmd_process('ai')
+
+                if len(address_info) == 0:
+                    self.plugin.console.log('mapping range at %s' % hex(ptr))
+
+                    r = Range(Range.SOURCE_TARGET, self.dwarf)
+                    r.init_with_address(ptr, require_data=True)
+
+                    self.map(r)
+            return ret
         except Exception as e:
             self._working = False
             self.onPipeBroken.emit(str(e))
@@ -299,6 +325,13 @@ class R2Pipe(QObject):
             return json.loads(ret)
         except:
             return {}
+
+    def map(self, dwarf_range):
+        map_path = os.path.join(self.r2_pipe_local_path, hex(dwarf_range.base))
+        if not os.path.exists(map_path):
+            with open(map_path, 'wb') as f:
+                f.write(dwarf_range.data)
+            self.cmd('on %s %s %s' % (map_path, hex(dwarf_range.base), dwarf_range.permissions))
 
     def _cmd_process(self, cmd):
         if not self.process:
@@ -359,6 +392,8 @@ class Plugin:
         return self.menu_items
 
     def __get_agent__(self):
+        self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
+
         # we create the first pipe here to be safe that the r2 agent is loaded before the first breakpoint
         # i.e if we start dwarf targetting a package from args and a script breaking at first open
         # dwarf will hang because r2frida try to load it's agent and frida turn to use some api uth which are
@@ -399,8 +434,6 @@ class Plugin:
         if self.pipe is None:
             return None
 
-        self.pipe.cmd('.\\i*')
-
         r2_decompilers = self.pipe.cmd('e cmd.pdc=?')
         if r2_decompilers is None:
             return None
@@ -416,15 +449,10 @@ class Plugin:
         if device is None:
             return None
 
-        pipe = R2Pipe()
+        pipe = R2Pipe(self)
         pipe.onPipeBroken.connect(self._on_pipe_error)
 
-        if device.type == 'usb':
-            pipe.open('frida://attach/usb//%d' % self.app.dwarf.pid)
-        elif device.type == 'local':
-            pipe.open('frida://%d' % self.app.dwarf.pid)
-        else:
-            raise Exception('unsupported device type %s' % device.type)
+        pipe.open()
         return pipe
 
     def _on_disassemble(self, dwarf_range):
@@ -564,6 +592,22 @@ class Plugin:
                     self._create_pipe()
 
                 cmd = message['payload'][3:]
+
+                if cmd == 'init':
+                    r2arch = self.app.dwarf.arch
+                    r2bits = 32
+                    if r2arch == 'arm64':
+                        r2arch = 'arm'
+                        r2bits = 64
+                    elif r2arch == 'x64':
+                        r2arch = 'x86'
+                        r2bits = 64
+                    elif r2arch == 'ia32':
+                        r2arch = 'x86'
+                    self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s; e anal.arch=%s' % (
+                        r2arch, r2bits, self.app.dwarf.platform, r2arch))
+                    return
+
                 try:
                     result = self.pipe.cmd(cmd)
                     self.app.dwarf._script.post({"type": 'r2', "payload": result})
@@ -571,8 +615,6 @@ class Plugin:
                     self.app.dwarf._script.post({"type": 'r2', "payload": None})
 
     def _on_session_created(self):
-        self.app.dwarf.onReceiveCmd.connect(self._on_receive_cmd)
-
         self.console = DwarfConsoleWidget(self.app, input_placeholder='r2', completer=False)
         self.console.onCommandExecute.connect(self.on_r2_command)
 
@@ -628,7 +670,7 @@ class Plugin:
                 hint_address = 0
             ptr, input_ = InputDialog.input_pointer(self.app, input_content=hex(hint_address))
             if ptr > 0:
-                r = Range(self.app.dwarf, Range.SOURCE_TARGET)
+                r = Range(Range.SOURCE_TARGET, self.app.dwarf)
                 r.init_with_address(ptr)
 
                 self.app.show_progress('r2: running analysis')
