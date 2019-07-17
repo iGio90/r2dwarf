@@ -205,7 +205,7 @@ class Plugin:
                 r2_decompiler_view = self.disassembly_view.decompilation_view
                 self.disassembly_view.addWidget(self.disassembly_view.decompilation_view)
                 if decompile_data is not None:
-                    r2_decompiler_view.setText(
+                    r2_decompiler_view.appendHtml(
                         '<pre>' + decompile_data + '</pre>')
             else:
                 r2_decompiler_view = R2DecompiledText()
