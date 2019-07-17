@@ -14,27 +14,10 @@ class R2Decompiler(QThread):
         self._with_r2dec = with_r2dec
 
     def run(self):
-        function_prologue = int(self._pipe.cmd('?v $F'), 16)
-        function = None
-
-        if self._dwarf_range.module_info is not None:
-            if function_prologue in self._dwarf_range.module_info.functions_map:
-                function = self._dwarf_range.module_info.functions_map[function_prologue]
-                try:
-                    decompile_data = function.r2_decompile_data
-                    if decompile_data:
-                        self.onR2Decompiler.emit([decompile_data])
-                        return
-                except:
-                    pass
-
         if self._with_r2dec:
             decompile_data = self._pipe.cmd('pddo')
         else:
             decompile_data = self._pipe.cmd('pdc')
-
-        if function is not None:
-            function.r2_decompile_data = decompile_data
         self.onR2Decompiler.emit([decompile_data])
 
 
