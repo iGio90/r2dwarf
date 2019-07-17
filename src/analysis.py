@@ -10,7 +10,6 @@ class R2Analysis(QThread):
         self._dwarf_range = dwarf_range
 
     def run(self):
-        self._pipe.map(self._dwarf_range)
         current_seek = self._pipe.plugin.current_seek
         self._pipe.cmd('s %s' % hex(self._dwarf_range.base))
         self._pipe.cmd('e anal.from = %d; e anal.to = %d; e anal.in = raw' % (
@@ -18,6 +17,6 @@ class R2Analysis(QThread):
         self._pipe.cmd('aa')
         self._pipe.cmd('aac')
         self._pipe.cmd('aar')
-        self._pipe.cmd('afr')
         self._pipe.cmd('s %s' % current_seek)
+        self._pipe.cmd('afr')
         self.onR2AnalysisFinished.emit([self._dwarf_range])

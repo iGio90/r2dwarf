@@ -139,31 +139,16 @@ class Plugin:
                 self.code_xrefs_model.setRowCount(0)
         else:
             self._on_finish_analysis([dwarf_range, {}])
-        if self.disassembly_view.decompilation_view is not None:
-            self.disassembly_view.decompilation_view.setParent(None)
-            self.disassembly_view.decompilation_view = None
-        if self.disassembly_view.graph_view is not None:
-            self.disassembly_view.graph_view.setParent(None)
-            self.disassembly_view.graph_view = None
-
-        if self.pipe is not None:
-            start_address = hex(dwarf_range.start_address)
-            if self.current_seek != start_address:
-                self.current_seek = start_address
-                self.pipe.cmd('s %s' % self.current_seek)
-
-            if self.call_refs_model is not None:
-                self.call_refs_model.setRowCount(0)
-            if self.code_xrefs_model is not None:
-                self.code_xrefs_model.setRowCount(0)
-        else:
-            self._on_finish_analysis([dwarf_range, {}])
 
     def _on_finish_analysis(self, data):
         self.app.hide_progress()
         self._working = False
 
         dwarf_range = data[0]
+        if dwarf_range is None:
+            dwarf_range = self.disassembly_view._range
+            if dwarf_range is None:
+                return
 
         function_info = self.pipe.cmdj('afij')
 

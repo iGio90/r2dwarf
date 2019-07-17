@@ -15,15 +15,21 @@ from plugins.r2.src.analysis import R2Analysis
 class R2AsyncGetRange(QThread):
     onRangeParsed = pyqtSignal(list, name="onRangeParsed")
 
-    def __init__(self, dwarf, ptr):
+    def __init__(self, plugin, ptr):
         super().__init__()
 
-        self.dwarf = dwarf
+        self.dwarf = plugin.app.dwarf
+        self.disasm_view = plugin.disassembly_view.disasm_view
         self.ptr = ptr
 
     def run(self):
         r = Range(Range.SOURCE_TARGET, self.dwarf)
-        r.init_with_address(self.ptr, require_data=True)
+        r.init_with_address(self.ptr, require_data=False)
+        if self.disasm_view._range is not None:
+            if self.disasm_view._range.base == r.base:
+                self.onRangeParsed.emit([self.disasm_view._range])
+                return
+        r.data = self.dwarf.read_memory(r.base, r.size)
         self.onRangeParsed.emit([r])
 
 
@@ -85,17 +91,12 @@ class R2Pipe(QObject):
             return {}
 
     def map_ptr(self, hex_ptr):
-        address_info = self._cmd_process('ai')
+        self.plugin.app.show_progress('r2: reading at %s' % hex_ptr)
+        self.plugin._working = True
 
-        if len(address_info) == 0:
-            self.plugin.console.log('mapping range at %s' % hex_ptr)
-
-            self.plugin.app.show_progress('r2: reading at %s' % hex_ptr)
-            self.plugin._working = True
-
-            self.async_get_range = R2AsyncGetRange(self.dwarf, int(hex_ptr, 16))
-            self.async_get_range.onRangeParsed.connect(lambda x: self.map(x[0]))
-            self.async_get_range.start()
+        self.async_get_range = R2AsyncGetRange(self.plugin, int(hex_ptr, 16))
+        self.async_get_range.onRangeParsed.connect(lambda x: self.map(x[0]))
+        self.async_get_range.start()
 
     def map(self, dwarf_range):
         map_path = os.path.join(self.r2_pipe_local_path, hex(dwarf_range.base))
@@ -110,6 +111,8 @@ class R2Pipe(QObject):
             self.r2analysis = R2Analysis(self, dwarf_range)
             self.r2analysis.onR2AnalysisFinished.connect(self.plugin._on_finish_analysis)
             self.r2analysis.start()
+        else:
+            self.plugin._on_finish_analysis([dwarf_range])
 
     def _cmd_process(self, cmd):
         if not self.process:
