@@ -80,6 +80,8 @@ class Plugin:
         self._working = False
 
         self.r2_widget = None
+        self.tabbed_graph_view = None
+        self.tabbed_decompiler_view = None
 
         self.menu_items = []
 
@@ -121,6 +123,10 @@ class Plugin:
 
         pipe.open()
         return pipe
+
+    def _on_disasm_view_key_press(self, event_key, event_modifiers):
+        if event_key == Qt.Key_Space:
+            self.show_graph_view()
 
     def _on_disassemble(self, dwarf_range):
         if self.pipe is None:
@@ -197,11 +203,13 @@ class Plugin:
                 self.disassembly_view.addWidget(self.disassembly_view.graph_view)
             self.disassembly_view.graph_view.setText('<pre>' + graph_data + '</pre>')
         else:
-            r2_graph_view = R2ScrollArea()
-            r2_graph_view.setText('<pre>' + graph_data + '</pre>')
-
-            self.app.main_tabs.addTab(r2_graph_view, 'graph view')
-            index = self.app.main_tabs.indexOf(r2_graph_view)
+            if self.tabbed_graph_view is None:
+                self.tabbed_graph_view = R2ScrollArea()
+            index = self.app.main_tabs.indexOf(self.tabbed_graph_view)
+            if index < 0:
+                self.app.main_tabs.addTab(self.tabbed_graph_view, 'graph')
+                index = self.app.main_tabs.indexOf(self.tabbed_graph_view)
+            self.tabbed_graph_view.setText('<pre>' + graph_data + '</pre>')
             self.app.main_tabs.setCurrentIndex(index)
 
     def _on_finish_decompiler(self, data):
@@ -219,12 +227,15 @@ class Plugin:
                     r2_decompiler_view.appendHtml(
                         '<pre>' + decompile_data + '</pre>')
             else:
-                r2_decompiler_view = R2DecompiledText()
-                self.app.main_tabs.addTab(r2_decompiler_view, 'decompiler')
-                index = self.app.main_tabs.indexOf(r2_decompiler_view)
+                if self.tabbed_decompiler_view is None:
+                    self.tabbed_decompiler_view = R2DecompiledText()
+                index = self.app.main_tabs.indexOf(self.tabbed_decompiler_view)
+                if index < 0:
+                    self.app.main_tabs.addTab(self.tabbed_decompiler_view, 'decompiler')
+                    index = self.app.main_tabs.indexOf(self.tabbed_graph_view)
+                self.tabbed_decompiler_view.clear()
+                self.tabbed_decompiler_view.appendHtml('<pre>' + decompile_data + '</pre>')
                 self.app.main_tabs.setCurrentIndex(index)
-                r2_decompiler_view.appendHtml(
-                    '<pre>' + decompile_data + '</pre>')
 
     def _on_hook_menu(self, menu, address):
         menu.addSeparator()
@@ -296,6 +307,7 @@ class Plugin:
 
             self.disassembly_view.disasm_view.run_default_disassembler = False
             self.disassembly_view.disasm_view.onDisassemble.connect(self._on_disassemble)
+            self.disassembly_view.disasm_view.onDisasmViewKeyPressEvent.connect(self._on_disasm_view_key_press)
 
             r2_function_refs = QSplitter()
             r2_function_refs.setOrientation(Qt.Vertical)
