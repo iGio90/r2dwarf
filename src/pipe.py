@@ -103,7 +103,7 @@ class R2Pipe(QObject):
 
     def map(self, dwarf_range):
         map_path = os.path.join(self.r2_pipe_local_path, hex(dwarf_range.base))
-        if not os.path.exists(map_path):
+        if not os.path.exists(map_path) and dwarf_range.data is not None:
             with open(map_path, 'wb') as f:
                 f.write(dwarf_range.data)
             self.cmd('on %s %s %s' % (map_path, hex(dwarf_range.base), dwarf_range.permissions))

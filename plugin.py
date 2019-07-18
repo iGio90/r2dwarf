@@ -32,13 +32,14 @@ from ui.widgets.list_view import DwarfListView
 
 
 class Plugin:
-    def __get_plugin_info__(self):
+    @staticmethod
+    def __get_plugin_info__():
         return {
             'name': 'r2dwarf',
             'description': 'r2frida in Dwarf',
             'version': '1.0.0',
             'author': 'iGio90',
-            'homepage': 'https://github.com/iGio90/Dwarf',
+            'homepage': 'https://github.com/iGio90/r2dwarf',
             'license': 'https://www.gnu.org/licenses/gpl-3.0',
         }
 
