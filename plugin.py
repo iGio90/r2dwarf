@@ -28,7 +28,6 @@ from plugins.r2dwarf.src.graph import R2Graph
 from plugins.r2dwarf.src.main_widget import R2Widget
 from plugins.r2dwarf.src.pipe import R2Pipe
 from plugins.r2dwarf.src.scrollarea import R2ScrollArea
-from ui.widget_console import DwarfConsoleWidget
 from ui.widgets.list_view import DwarfListView
 
 

@@ -8,7 +8,7 @@ from PyQt5.QtCore import QObject, pyqtSignal, QThread
 from lib import utils
 from subprocess import *
 
-from lib.range import Range
+from lib.types.range import Range
 from plugins.r2dwarf.src.analysis import R2Analysis
 
 
