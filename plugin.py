@@ -192,10 +192,7 @@ class Plugin:
                 ])
 
         if len(data) > 1:
-            functions_list = data[1]
-            map = {}
-            for function in functions_list:
-                map[function['name']] = function['offset']
+            map = data[1]
             self.disassembly_view.update_functions(functions_list=map)
 
     def _on_finish_graph(self, data):
