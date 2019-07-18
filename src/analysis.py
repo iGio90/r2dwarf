@@ -16,4 +16,7 @@ class R2Analysis(QThread):
         self._pipe.cmd('aac')
         self._pipe.cmd('aar')
         self._pipe.cmd('afr')
-        self.onR2AnalysisFinished.emit([self._dwarf_range])
+
+        functions = self._pipe.cmdj('aflj')
+
+        self.onR2AnalysisFinished.emit([self._dwarf_range, functions])

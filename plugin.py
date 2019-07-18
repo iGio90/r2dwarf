@@ -109,7 +109,7 @@ class Plugin:
         if r2_decompilers and 'pdd' in r2_decompilers:
             self.with_r2dec = True
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
-        self.pipe.cmd("e anal.autoname=true; e anal.hasnext=true; e asm.anal=true")
+        self.pipe.cmd("e anal.autoname=true; e anal.hasnext=true; e asm.anal=true; e anal.fcnprefix=sub")
         return self.pipe
 
     def _open_pipe(self):
@@ -190,6 +190,13 @@ class Plugin:
                     QStandardItem(hex(ref['at'])),
                     QStandardItem(ref['type'])
                 ])
+
+        if len(data) > 1:
+            functions_list = data[1]
+            map = {}
+            for function in functions_list:
+                map[function['name']] = function['offset']
+            self.disassembly_view.update_functions(functions_list=map)
 
     def _on_finish_graph(self, data):
         self.app.hide_progress()
