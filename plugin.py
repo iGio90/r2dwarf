@@ -88,7 +88,8 @@ class Plugin:
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
         self.app.session_manager.sessionStopped.connect(self._on_session_stopped)
-        self.app.onUIElementCreated.connect(self._on_ui_element_created)
+        self.app.onSystemUIElementCreated.connect(self._on_ui_element_created)
+        self.app.onSystemUIElementRemoved.connect(self._on_close_tab)
 
     def _create_pipe(self):
         if self.pipe_locker:
@@ -294,10 +295,19 @@ class Plugin:
                     self.app.dwarf._script.post({"type": 'r2', "payload": None})
 
     def _on_session_created(self):
+        self.app.panels_menu.addSeparator()
+        self.app.panels_menu.addAction('r2', self.create_widget)
+        self.create_widget()
+
+    def create_widget(self):
+        if self.r2_widget is not None:
+            return self.r2_widget
+
         self.r2_widget = R2Widget(self)
         if self.pipe is not None:
             self.pipe.onUpdateVars.connect(self.r2_widget.refresh_e_vars_list)
         self.app.main_tabs.addTab(self.r2_widget, 'r2')
+        return self.r2_widget
 
     def _on_session_stopped(self):
         # TODO: cleanup the stuff
@@ -341,6 +351,10 @@ class Plugin:
             self.disassembly_view.setStretchFactor(2, 5)
 
             self.disassembly_view.disasm_view.menu_extra_menu_hooks.append(self._on_hook_menu)
+
+    def _on_close_tab(self, name):
+        if name == 'r2':
+            self.r2_widget = None
 
     def show_decompiler_view(self):
         if self._working:
