@@ -11,9 +11,6 @@ git clone https://github.com/iGio90/r2dwarf
 
 ~~~
 
-# make sure r2frida is installed:
-r2pm -ci r2frida
-
 # optionally install r2dec decompiler (default uses pdc)
 r2pm -ci r2dec
 ```
