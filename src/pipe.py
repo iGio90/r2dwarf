@@ -23,7 +23,7 @@ class R2AsyncGetRange(QThread):
         self.ptr = ptr
 
     def run(self):
-        r = Range(Range.SOURCE_TARGET, self.dwarf)
+        r = Range(self.dwarf)
         r.init_with_address(self.ptr, require_data=False)
         if self.disasm_view._range is not None:
             if self.disasm_view._range.base == r.base:
