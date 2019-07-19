@@ -173,9 +173,9 @@ class Plugin:
         num_instructions = 0
         if 'offset' in function_info:
             dwarf_range.start_offset = function_info['offset'] - dwarf_range.base
-            num_instructions = int(self.pipe.cmd('pi~?'))
+            num_instructions = int(self.pipe.cmd('pif~?'))
 
-        self.disassembly_view.disasm_view.start_disassemble(dwarf_range, num_instructions=num_instructions)
+        self.disassembly_view.disasm_view.start_disassemble(dwarf_range, num_instructions=num_instructions - 1)
 
         if 'callrefs' in function_info:
             for ref in function_info['callrefs']:
