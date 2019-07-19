@@ -74,10 +74,10 @@ class R2Pipe(QObject):
         try:
             ret = self._cmd_process(cmd)
 
-            if cmd.startswith('s '):
-                ptr = utils.parse_ptr(cmd[2:])
-                self.plugin.current_seek = hex(ptr)
-                self.map_ptr(self.plugin.current_seek)
+            if cmd.startswith('s') and len(cmd) > 1:
+                new_seek = self._cmd_process('s')
+                self.plugin.current_seek = new_seek
+                self.map_ptr(new_seek)
             elif cmd.startswith('e '):
                 self.onUpdateVars.emit()
             return ret
