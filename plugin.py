@@ -206,6 +206,7 @@ class Plugin:
             if self.disassembly_view.graph_view is None:
                 self.disassembly_view.graph_view = R2ScrollArea()
                 self.disassembly_view.addWidget(self.disassembly_view.graph_view)
+                self.disassembly_view.setSizes([100, 100, 100])
             self.disassembly_view.graph_view.setText('<pre>' + graph_data + '</pre>')
         else:
             if self.tabbed_graph_view is None:

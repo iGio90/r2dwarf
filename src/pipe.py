@@ -65,7 +65,7 @@ class R2Pipe(QObject):
             r2e += '.exe'
         cmd = [r2e, "-w", "-q0", '-']
         try:
-            self.process = Popen(cmd, shell=False, stdin=PIPE, stdout=PIPE, bufsize=0)
+            self.process = Popen(cmd, shell=False, stdin=PIPE, stdout=PIPE, stderr=PIPE, bufsize=0)
         except Exception as e:
             self.onPipeBroken.emit(str(e))
         self.process.stdout.read(1)
