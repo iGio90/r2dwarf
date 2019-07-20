@@ -45,9 +45,14 @@ class R2Pipe(QObject):
         self.process = None
         self._working = False
 
-        self.r2_pipe_local_path = os.path.abspath('.r2pipe')
-        if os.path.exists(self.r2_pipe_local_path):
-            shutil.rmtree(self.r2_pipe_local_path)
+        self.r2_pipe_local_path = os.path.abspath('.r2pipe_%d' % time.time())
+        for path in os.listdir('.'):
+            if '.r2pipe' in path:
+                try:
+                    shutil.rmtree(path)
+                except:
+                    # instance of dwarf already running
+                    pass
         os.mkdir(self.r2_pipe_local_path)
 
         self.close()
