@@ -297,7 +297,6 @@ class Plugin:
     def _on_session_created(self):
         self.app.panels_menu.addSeparator()
         self.app.panels_menu.addAction('r2', self.create_widget)
-        self.create_widget()
 
     def create_widget(self):
         if self.r2_widget is not None:
