@@ -84,6 +84,8 @@ class Plugin:
         self.tabbed_graph_view = None
         self.tabbed_decompiler_view = None
 
+        self.disassembly_view = None
+
         self.menu_items = []
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
@@ -176,26 +178,27 @@ class Plugin:
             dwarf_range.start_offset = function_info['offset'] - dwarf_range.base
             num_instructions = int(self.pipe.cmd('pif~?'))
 
-        self.disassembly_view.disasm_view.start_disassemble(dwarf_range, num_instructions=num_instructions - 1)
+        if self.disassembly_view is not None:
+            self.disassembly_view.disasm_view.start_disassemble(dwarf_range, num_instructions=num_instructions - 1)
 
-        if 'callrefs' in function_info:
-            for ref in function_info['callrefs']:
-                self.call_refs_model.appendRow([
-                    QStandardItem(hex(ref['addr'])),
-                    QStandardItem(hex(ref['at'])),
-                    QStandardItem(ref['type'])
-                ])
-        if 'codexrefs' in function_info:
-            for ref in function_info['codexrefs']:
-                self.code_xrefs_model.appendRow([
-                    QStandardItem(hex(ref['addr'])),
-                    QStandardItem(hex(ref['at'])),
-                    QStandardItem(ref['type'])
-                ])
+            if 'callrefs' in function_info:
+                for ref in function_info['callrefs']:
+                    self.call_refs_model.appendRow([
+                        QStandardItem(hex(ref['addr'])),
+                        QStandardItem(hex(ref['at'])),
+                        QStandardItem(ref['type'])
+                    ])
+            if 'codexrefs' in function_info:
+                for ref in function_info['codexrefs']:
+                    self.code_xrefs_model.appendRow([
+                        QStandardItem(hex(ref['addr'])),
+                        QStandardItem(hex(ref['at'])),
+                        QStandardItem(ref['type'])
+                    ])
 
-        if len(data) > 1:
-            map = data[1]
-            self.disassembly_view.update_functions(functions_list=map)
+            if len(data) > 1:
+                map = data[1]
+                self.disassembly_view.update_functions(functions_list=map)
 
     def _on_finish_graph(self, data):
         self.app.hide_progress()
@@ -289,7 +292,7 @@ class Plugin:
                     return
 
                 try:
-                    result = self.pipe.cmd(cmd)
+                    result = self.pipe.cmd(cmd, api=True)
                     self.app.dwarf._script.post({"type": 'r2', "payload": result})
                 except:
                     self.app.dwarf._script.post({"type": 'r2', "payload": None})

@@ -18,24 +18,31 @@ class R2AsyncGetRange(QThread):
     def __init__(self, plugin, ptr):
         super().__init__()
 
-        self.dwarf = plugin.app.dwarf
-        self.disasm_view = plugin.disassembly_view.disasm_view
+        self.plugin = plugin
         self.ptr = ptr
 
     def run(self):
-        r = Range(self.dwarf)
-        r.init_with_address(self.ptr, require_data=False)
-        if self.disasm_view._range is not None:
-            if self.disasm_view._range.base == r.base:
-                self.onRangeParsed.emit([self.disasm_view._range])
-                return
-        r.data = self.dwarf.read_memory(r.base, r.size)
+        r = R2Pipe.get_reange(self.plugin, self.ptr)
         self.onRangeParsed.emit([r])
 
 
 class R2Pipe(QObject):
     onPipeBroken = pyqtSignal(str, name='onPipeBroken')
     onUpdateVars = pyqtSignal(name='onUpdateVars')
+
+    @staticmethod
+    def get_reange(plugin, ptr):
+        r = Range(plugin.app.dwarf)
+        r.init_with_address(ptr, require_data=False)
+
+        disasm_view = plugin.disassembly_view
+        if disasm_view is not None:
+            disasm_view = disasm_view.disasm_view
+            if disasm_view._range is not None:
+                if disasm_view._range.base == r.base:
+                    return disasm_view._range
+        r.data = plugin.app.dwarf.read_memory(r.base, r.size)
+        return r
 
     def __init__(self, plugin, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -75,18 +82,19 @@ class R2Pipe(QObject):
             self.onPipeBroken.emit(str(e))
         self.process.stdout.read(1)
 
-    def cmd(self, cmd):
+    def cmd(self, cmd, api=False):
         try:
             ret = self._cmd_process(cmd)
 
             if cmd.startswith('s') and len(cmd) > 1:
                 new_seek = self._cmd_process('s')
                 self.plugin.current_seek = new_seek
-                self.map_ptr(new_seek)
+                self.map_ptr(new_seek, sync=api)
             elif cmd.startswith('e '):
                 self.onUpdateVars.emit()
             return ret
         except Exception as e:
+            print('r2pipe broken: %s' % str(e))
             self._working = False
             self.onPipeBroken.emit(str(e))
         return None
@@ -98,13 +106,16 @@ class R2Pipe(QObject):
         except:
             return {}
 
-    def map_ptr(self, hex_ptr):
+    def map_ptr(self, hex_ptr, sync=False):
         self.plugin.app.show_progress('r2: reading at %s' % hex_ptr)
         self.plugin._working = True
 
-        self.async_get_range = R2AsyncGetRange(self.plugin, int(hex_ptr, 16))
-        self.async_get_range.onRangeParsed.connect(lambda x: self.map(x[0]))
-        self.async_get_range.start()
+        if sync:
+            self.map(self.get_reange(self.plugin, int(hex_ptr, 16)))
+        else:
+            self.async_get_range = R2AsyncGetRange(self.plugin, int(hex_ptr, 16))
+            self.async_get_range.onRangeParsed.connect(lambda x: self.map(x[0]))
+            self.async_get_range.start()
 
     def map(self, dwarf_range):
         map_path = os.path.join(self.r2_pipe_local_path, hex(dwarf_range.base))
