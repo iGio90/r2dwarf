@@ -335,6 +335,7 @@ class Plugin:
             self.call_refs_model.setHeaderData(0, Qt.Horizontal, 'call refs')
             self.call_refs_model.setHeaderData(1, Qt.Horizontal, '')
             self.call_refs_model.setHeaderData(2, Qt.Horizontal, '')
+            call_refs.doubleClicked.connect(lambda x: self.disasm_ref_double_click(self.call_refs_model, x))
             call_refs.setModel(self.call_refs_model)
 
             code_xrefs = DwarfListView()
@@ -342,6 +343,7 @@ class Plugin:
             self.code_xrefs_model.setHeaderData(0, Qt.Horizontal, 'code xrefs')
             self.code_xrefs_model.setHeaderData(1, Qt.Horizontal, '')
             self.code_xrefs_model.setHeaderData(2, Qt.Horizontal, '')
+            code_xrefs.doubleClicked.connect(lambda x: self.disasm_ref_double_click(self.code_xrefs_model, x))
             code_xrefs.setModel(self.code_xrefs_model)
 
             r2_function_refs.addWidget(call_refs)
@@ -380,3 +382,7 @@ class Plugin:
             self.r2graph = R2Graph(self.pipe)
             self.r2graph.onR2Graph.connect(self._on_finish_graph)
             self.r2graph.start()
+
+    def disasm_ref_double_click(self, model, modelIndex):
+        ptr = model.item(model.itemFromIndex(modelIndex).row(), 0).text()
+        self.disassembly_view.disasm_view.read_memory(ptr)
