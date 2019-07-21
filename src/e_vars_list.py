@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 
-from ui.dialog_input import InputDialog
+from ui.dialogs.dialog_input import InputDialog
 from ui.widgets.list_view import DwarfListView
 
 
