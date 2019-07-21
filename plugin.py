@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import QSplitter, QAction
 
 from lib import utils
 from lib.prefs import Prefs
+from lib.types.range import Range
 from plugins.r2dwarf.src.decompiler import R2DecompiledText, R2Decompiler
 from plugins.r2dwarf.src.dialog_options import OptionsDialog, KEY_WIDESCREEN_MODE
 from plugins.r2dwarf.src.graph import R2Graph
@@ -384,5 +385,10 @@ class Plugin:
             self.r2graph.start()
 
     def disasm_ref_double_click(self, model, modelIndex):
-        ptr = model.item(model.itemFromIndex(modelIndex).row(), 0).text()
-        self.disassembly_view.disasm_view.read_memory(ptr)
+        ptr = utils.parse_ptr(model.item(model.itemFromIndex(modelIndex).row(), 0).text())
+        line = self.disassembly_view.disasm_view.get_line_for_address(ptr)
+        if line >= 0:
+            self.disassembly_view.disasm_view.verticalScrollBar().setValue(line)
+        else:
+            range = Range(self.app.dwarf)
+            range.init_async(ptr, cb=lambda x, y: self._on_disassemble(x))
