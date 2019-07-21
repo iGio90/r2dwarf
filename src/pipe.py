@@ -3,7 +3,7 @@ import os
 import shutil
 import time
 
-from PyQt5.QtCore import QObject, pyqtSignal, QThread
+from PyQt5.QtCore import QObject, pyqtSignal
 
 from lib import utils
 from subprocess import *
@@ -12,37 +12,9 @@ from lib.types.range import Range
 from plugins.r2dwarf.src.analysis import R2Analysis
 
 
-class R2AsyncGetRange(QThread):
-    onRangeParsed = pyqtSignal(list, name="onRangeParsed")
-
-    def __init__(self, plugin, ptr):
-        super().__init__()
-
-        self.plugin = plugin
-        self.ptr = ptr
-
-    def run(self):
-        r = R2Pipe.get_reange(self.plugin, self.ptr)
-        self.onRangeParsed.emit([r])
-
-
 class R2Pipe(QObject):
     onPipeBroken = pyqtSignal(str, name='onPipeBroken')
     onUpdateVars = pyqtSignal(name='onUpdateVars')
-
-    @staticmethod
-    def get_reange(plugin, ptr):
-        r = Range(plugin.app.dwarf)
-        r.init_with_address(ptr, require_data=False)
-
-        disasm_view = plugin.disassembly_view
-        if disasm_view is not None:
-            disasm_view = disasm_view.disasm_view
-            if disasm_view._range is not None:
-                if disasm_view._range.base == r.base:
-                    return disasm_view._range
-        r.data = plugin.app.dwarf.read_memory(r.base, r.size)
-        return r
 
     def __init__(self, plugin, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -113,9 +85,7 @@ class R2Pipe(QObject):
         if sync:
             self.map(self.get_reange(self.plugin, int(hex_ptr, 16)))
         else:
-            self.async_get_range = R2AsyncGetRange(self.plugin, int(hex_ptr, 16))
-            self.async_get_range.onRangeParsed.connect(lambda x: self.map(x[0]))
-            self.async_get_range.start()
+            Range.build_or_get(self.dwarf, hex_ptr, cb=self.map)
 
     def map(self, dwarf_range):
         map_path = os.path.join(self.r2_pipe_local_path, hex(dwarf_range.base))

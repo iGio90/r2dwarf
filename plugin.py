@@ -148,7 +148,7 @@ class Plugin:
             self.disassembly_view.graph_view = None
 
         if self.pipe is not None:
-            start_address = hex(dwarf_range.start_address)
+            start_address = hex(dwarf_range.user_req_start_address)
             if self.current_seek != start_address:
                 self.current_seek = start_address
                 self.pipe.cmd('s %s' % self.current_seek)
@@ -176,7 +176,7 @@ class Plugin:
 
         num_instructions = 0
         if 'offset' in function_info:
-            dwarf_range.start_offset = function_info['offset'] - dwarf_range.base
+            dwarf_range.user_req_start_offset = function_info['offset'] - dwarf_range.base
             num_instructions = int(self.pipe.cmd('pif~?'))
 
         if self.disassembly_view is not None:
@@ -390,5 +390,4 @@ class Plugin:
         if line >= 0:
             self.disassembly_view.disasm_view.verticalScrollBar().setValue(line)
         else:
-            range = Range(self.app.dwarf)
-            range.init_async(ptr, cb=lambda x, y: self._on_disassemble(x))
+            Range.build_or_get(self.app.dwarf, ptr, cb=self._on_disassemble)
