@@ -36,7 +36,7 @@ class Plugin:
     def __get_plugin_info__():
         return {
             'name': 'r2dwarf',
-            'description': 'r2frida in Dwarf',
+            'description': 'radare2 for Dwarf',
             'version': '1.0.0',
             'author': 'iGio90',
             'homepage': 'https://github.com/iGio90/r2dwarf',
