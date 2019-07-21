@@ -309,6 +309,7 @@ class Plugin:
         if self.pipe is not None:
             self.pipe.onUpdateVars.connect(self.r2_widget.refresh_e_vars_list)
         self.app.main_tabs.addTab(self.r2_widget, 'r2')
+        self.app.main_tabs.setCurrentIndex(self.app.main_tabs.indexOf(self.r2_widget))
         return self.r2_widget
 
     def _on_session_stopped(self):
