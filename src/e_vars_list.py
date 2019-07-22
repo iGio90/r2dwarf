@@ -54,12 +54,12 @@ class EVarsList(DwarfListView):
         item = self.e_list_model.item(row, 0).text()
         item_val = self.e_list_model.item(row, 1).text()
         accept, res = InputDialog.input(parent=self.plugin.app, hint=item, input_content=item_val, placeholder=item_val)
-        if accept and res and self.plugin.pipe is not None:
+        if (accept and res) and self.plugin.pipe is not None:
             self.plugin.pipe.cmd('e %s = %s' % (item, res))
 
     def refresh_e_vars_list(self):
         if self.plugin.pipe is not None:
-            self.e_list_model.setRowCount(0)
+            self.clear()
 
             if not self.e_vars_refresher.isRunning():
                 self.e_vars_refresher.start()
