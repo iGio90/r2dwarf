@@ -39,7 +39,9 @@ class R2DecompiledText(QPlainTextEdit):
         super().__init__(parent=parent)
         self._disasm_view = disasm_view
         self.setStyleSheet('a { color: #666; text-decoration: none; }')
+        self.setLineWrapMode(0)
         self.setFont(utils.get_os_monospace_font())
+        self.setReadOnly(True)
 
     def mousePressEvent(self, event):
         if not self._disasm_view:
