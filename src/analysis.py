@@ -37,9 +37,9 @@ class R2Analysis(QThread):
         self._pipe.cmd('e scr.html=0')
         functions = self._pipe.cmd('afl').split('\n')
         self._pipe.cmd('e scr.html=1')
-        map = {}
+        func_map = {}
         for fn in functions:
             fn = fn.split(' ')
-            map[fn[len(fn) - 1]] = int(fn[0], 16)
+            func_map[fn[len(fn) - 1]] = int(fn[0], 16)
 
-        self.onR2AnalysisFinished.emit([self._dwarf_range, map])
+        self.onR2AnalysisFinished.emit([self._dwarf_range, func_map])

@@ -101,11 +101,11 @@ class R2Pipe(QObject):
         self.plugin._working = True
 
         if sync:
-            self.map(self.get_reange(self.plugin, int(hex_ptr, 16)))
+            self.memmap(self.get_reange(self.plugin, int(hex_ptr, 16)))
         else:
-            Range.build_or_get(self.dwarf, hex_ptr, cb=self.map)
+            Range.build_or_get(self.dwarf, hex_ptr, cb=self.memmap)
 
-    def map(self, dwarf_range):
+    def memmap(self, dwarf_range):
         map_path = os.path.join(self.r2_pipe_local_path, hex(dwarf_range.base))
         if not os.path.exists(map_path) and dwarf_range.data is not None:
             with open(map_path, 'wb') as f:

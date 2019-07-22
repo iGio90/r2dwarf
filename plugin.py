@@ -236,8 +236,8 @@ class Plugin:
                     ])
 
             if data and len(data) > 1:
-                map = data[1]
-                self.disassembly_view.update_functions(functions_list=map)
+                func_map = data[1]
+                self.disassembly_view.update_functions(functions_list=func_map)
 
     def _on_finish_graph(self, data):
         self.app.hide_progress()
