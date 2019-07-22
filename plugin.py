@@ -118,6 +118,8 @@ class Plugin:
             # setup decompiler to use when doing pdc/pdcj
             self.pipe.cmd('e cmd.pdc=pdd')
             self.with_r2dec = True
+            self.dock_decompiled_view.show()
+
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
         self.pipe.cmd(
             "e anal.autoname=true; e anal.hasnext=true; e asm.anal=true; e anal.fcnprefix=sub")
@@ -417,8 +419,11 @@ class Plugin:
 
             self.add_graph_view()
             self.add_decompiler_view()
-            self.debug_panel.raise_disassembly_panel()
 
+            if not self.with_r2dec:
+                self.dock_decompiled_view.hide()
+
+            self.debug_panel.raise_disassembly_panel()
             self.debug_panel.restoreUiState()
 
     def _on_close_tab(self, name):
