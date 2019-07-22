@@ -237,10 +237,9 @@ class Plugin:
                         QStandardItem(ref['type'])
                     ])
 
-        map_ = {}
         if data and len(data) > 1:
             map_ = data[1]
-        self.debug_panel.update_functions(functions_list=map_)
+            self.debug_panel.update_functions(functions_list=map_)
 
         self.r2graph = R2Graph(self.pipe)
         self.r2graph.onR2Graph.connect(self._on_finish_graph)
@@ -437,6 +436,7 @@ class Plugin:
         self.dock_decompiled_view.setWidget(self.decompiled_view)
         self.debug_panel.addDockWidget(Qt.RightDockWidgetArea, self.dock_decompiled_view)
         self.debug_panel.tabifyDockWidget(self.debug_panel.dock_disassembly_panel, self.dock_decompiled_view)
+        self.app.debug_view_menu.addAction(self.dock_decompiled_view.toggleViewAction())
 
     def add_graph_view(self):
         self.graph_view = R2DecompiledText(disasm_view=self.debug_panel.disassembly_panel)
@@ -445,6 +445,7 @@ class Plugin:
         self.dock_graph_view.setWidget(self.graph_view)
         self.debug_panel.addDockWidget(Qt.RightDockWidgetArea, self.dock_graph_view)
         self.debug_panel.tabifyDockWidget(self.debug_panel.dock_disassembly_panel, self.dock_graph_view)
+        self.app.debug_view_menu.addAction(self.dock_graph_view.toggleViewAction())
 
     def disasm_ref_double_click(self, model, modelIndex):
         ptr = utils.parse_ptr(model.item(
