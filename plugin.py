@@ -15,6 +15,7 @@ Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
     along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 import os
+import json
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
@@ -45,7 +46,7 @@ class Plugin:
         }
 
     def __get_top_menu_actions__(self):
-        if len(self.menu_items) > 0:
+        if self.menu_items:
             return self.menu_items
 
         options = QAction('Options')
@@ -76,6 +77,7 @@ class Plugin:
         self.pipe_locker = False
 
         self._prefs = Prefs()
+        self._prefs.prefsChanged.connect(self._on_prefs_changed)
         self.pipe = None
         self.current_seek = ''
         self.with_r2dec = False
@@ -83,16 +85,38 @@ class Plugin:
 
         self.r2_widget = None
         self.tabbed_graph_view = None
-        self.tabbed_decompiler_view = None
 
         self.disassembly_view = None
+        self._decompiled_textview = None
+        self.r2decompiler = None
 
         self.menu_items = []
+        self._auto_sized = False
 
         self.app.session_manager.sessionCreated.connect(self._on_session_created)
         self.app.session_manager.sessionStopped.connect(self._on_session_stopped)
         self.app.onSystemUIElementCreated.connect(self._on_ui_element_created)
         self.app.onSystemUIElementRemoved.connect(self._on_close_tab)
+
+    def _on_prefs_changed(self):
+        if self._decompiled_textview:
+            if self._prefs.get(KEY_WIDESCREEN_MODE, False):
+                self._decompiled_textview.setParent(None)
+                self._decompiled_textview = R2DecompiledText(disasm_view=self.disassembly_view.disasm_view)
+                self.disassembly_view.addWidget(self._decompiled_textview)
+            else:
+                self._decompiled_textview.setParent(None)
+                self._decompiled_textview = R2DecompiledText(disasm_view=self.disassembly_view.disasm_view)
+                index = self.app.main_tabs.indexOf(self._decompiled_textview)
+                if index < 0:
+                    index = self.app.main_tabs.addTab(self._decompiled_textview, 'Decompiler')
+
+                self.app.main_tabs.setCurrentIndex(index)
+
+            # decompile
+            if not self.r2decompiler.isRunning():
+                self.r2decompiler.start()
+
 
     def _create_pipe(self):
         if self.pipe_locker:
@@ -112,6 +136,8 @@ class Plugin:
             return None
         r2_decompilers = r2_decompilers.split()
         if r2_decompilers and 'pdd' in r2_decompilers:
+            # setup decompiler to use when doing pdc/pdcj
+            self.pipe.cmd('e cmd.pdc=pdd')
             self.with_r2dec = True
         self.pipe.cmd("e scr.color=2; e scr.html=1; e scr.utf8=true;")
         self.pipe.cmd("e anal.autoname=true; e anal.hasnext=true; e asm.anal=true; e anal.fcnprefix=sub")
@@ -140,14 +166,12 @@ class Plugin:
         self.disassembly_view.disasm_view._lines.clear()
         self.disassembly_view.disasm_view.viewport().update()
 
-        if self.disassembly_view.decompilation_view is not None:
-            self.disassembly_view.decompilation_view.setParent(None)
-            self.disassembly_view.decompilation_view = None
         if self.disassembly_view.graph_view is not None:
             self.disassembly_view.graph_view.setParent(None)
             self.disassembly_view.graph_view = None
 
         if self.pipe is not None:
+            # TODO: analyze the location
             start_address = hex(dwarf_range.user_req_start_address)
             if self.current_seek != start_address:
                 self.current_seek = start_address
@@ -160,18 +184,23 @@ class Plugin:
         else:
             self._on_finish_analysis([dwarf_range, {}])
 
+        # decompile when decompiledtext is open
+        if self._decompiled_textview and self.r2decompiler:
+            self.r2decompiler.start()
+
     def _on_finish_analysis(self, data):
         self.app.hide_progress()
         self._working = False
 
         dwarf_range = data[0]
-        if dwarf_range is None:
+        if not dwarf_range:
             dwarf_range = self.disassembly_view._range
-            if dwarf_range is None:
+            if not dwarf_range:
                 return
 
-        function_info = self.pipe.cmdj('afij')
-        if len(function_info) > 0:
+        cmd_result = self.pipe.cmdj('afij').replace('&nbsp;', '') # NOTE: keep the replace for compatibility
+        function_info = json.loads(cmd_result)
+        if function_info:
             function_info = function_info[0]
 
         num_instructions = 0
@@ -197,7 +226,7 @@ class Plugin:
                         QStandardItem(ref['type'])
                     ])
 
-            if len(data) > 1:
+            if data and len(data) > 1:
                 map = data[1]
                 self.disassembly_view.update_functions(functions_list=map)
 
@@ -223,29 +252,85 @@ class Plugin:
             self.app.main_tabs.setCurrentIndex(index)
 
     def _on_finish_decompiler(self, data):
+        if not self.with_r2dec:
+            return
+
         self.app.hide_progress()
         self._working = False
+        import re
 
-        decompile_data = data[0]
-        if decompile_data is not None:
+        # keep until ?
+        data[0] = re.sub(r'\d+;\d+;\d+;\d+;', '', data[0])
+        data[0] = data[0].replace('<', '&lt;').replace('>', '&gt;')
+        # replace colors
+        regex = r'\\u001b(\[[0-?]*[ -/]*[@-~])(.*?)\\u001b\[[0-?]*[ -/]*[@-~]'
+        decompile_data = re.sub(regex, r"<font color='\1'>\2</font>", data[0])
+
+        colors = {
+            # comment == orgcolor
+            '[30m': '#666', # black
+            '[31m': '#5C6370', # red
+            '[32m':	'#D19A66', #green
+            '[33m': '#C678DD', # yellow
+            '[34m': 'blue',
+            '[35m':	'#C678DD', #magenta
+            '[36m': '#e06c75', #cyan
+            '[37m':	'white',
+            '[39m': '#666', # white
+            '[90m': '#61AFEF', #lightgray
+            '[91m':	'LightRed',
+            '[92m': 'LightGreen'
+        }
+
+        for color in colors:
+            decompile_data = decompile_data.replace(color, colors[color])
+
+        decompile_data = json.loads(decompile_data)
+
+        if decompile_data:
+            if not self._decompiled_textview:
+                self._decompiled_textview = R2DecompiledText(disasm_view=self.disassembly_view.disasm_view)
+
+            self._decompiled_textview.clear()
             if self._prefs.get(KEY_WIDESCREEN_MODE, False):
-                if self.disassembly_view.decompilation_view is None:
-                    self.disassembly_view.decompilation_view = R2DecompiledText()
-                r2_decompiler_view = self.disassembly_view.decompilation_view
-                self.disassembly_view.addWidget(self.disassembly_view.decompilation_view)
-                if decompile_data is not None:
-                    r2_decompiler_view.appendHtml(
-                        '<pre>' + decompile_data + '</pre>')
+                if not self._decompiled_textview:
+                    self.disassembly_view.addWidget(self._decompiled_textview)
+
+                if not self._auto_sized:
+                    main_width = self.disassembly_view.width()
+                    childs = self.disassembly_view.count()
+                    new_sizes = [1, 1]
+                    for _ in range(2, childs):
+                        new_sizes.append(main_width / childs)
+
+                    self.disassembly_view.setSizes(new_sizes)
             else:
-                if self.tabbed_decompiler_view is None:
-                    self.tabbed_decompiler_view = R2DecompiledText()
-                index = self.app.main_tabs.indexOf(self.tabbed_decompiler_view)
+                index = self.app.main_tabs.indexOf(self._decompiled_textview)
                 if index < 0:
-                    self.app.main_tabs.addTab(self.tabbed_decompiler_view, 'decompiler')
-                    index = self.app.main_tabs.indexOf(self.tabbed_graph_view)
-                self.tabbed_decompiler_view.clear()
-                self.tabbed_decompiler_view.appendHtml('<pre>' + decompile_data + '</pre>')
+                    index = self.app.main_tabs.addTab(self._decompiled_textview, 'Decompiler')
+
                 self.app.main_tabs.setCurrentIndex(index)
+
+            # parse
+            if 'lines' in decompile_data and decompile_data['lines']:
+                for line in decompile_data['lines']:
+                    if 'str' in line:
+                        new_line = ''
+                        for char in line['str']:
+                            if char.isspace():
+                                new_line += '&nbsp;'
+                            else:
+                                break
+
+                        if 'offset' in line:
+                            new_line += '<a href="offset:' + hex(line['offset']) + '" style="color: #666; text-decoration: none;">'
+
+                        new_line += line['str'].lstrip()
+
+                        if 'offset' in line:
+                            new_line += '</a>'
+
+                        self._decompiled_textview.appendHtml(new_line)
 
     def _on_hook_menu(self, menu, address):
         menu.addSeparator()
@@ -253,7 +338,9 @@ class Plugin:
 
         view_menu = r2_menu.addMenu('view')
         graph = view_menu.addAction('graph view', self.show_graph_view)
-        decompile = view_menu.addAction('decompile', self.show_decompiler_view)
+        # show only when r2dec is in place
+        if self.with_r2dec:
+            decompile = view_menu.addAction('decompile', self.show_decompiler_view)
         if address == -1:
             graph.setEnabled(False)
             decompile.setEnabled(False)
@@ -322,7 +409,7 @@ class Plugin:
         if elem == 'disassembly':
             self.disassembly_view = widget
             self.disassembly_view.graph_view = None
-            self.disassembly_view.decompilation_view = None
+            self._decompiled_textview = None
 
             self.disassembly_view.disasm_view.run_default_disassembler = False
             self.disassembly_view.disasm_view.onDisassemble.connect(self._on_disassemble)
@@ -349,12 +436,10 @@ class Plugin:
 
             r2_function_refs.addWidget(call_refs)
             r2_function_refs.addWidget(code_xrefs)
+            r2_function_refs.setSizes([50, 50])
 
             self.disassembly_view.insertWidget(1, r2_function_refs)
-
-            self.disassembly_view.setStretchFactor(0, 1)
-            self.disassembly_view.setStretchFactor(1, 1)
-            self.disassembly_view.setStretchFactor(2, 5)
+            self.disassembly_view.setSizes([10, 10, self.disassembly_view.width() - 20])
 
             self.disassembly_view.disasm_view.menu_extra_menu_hooks.append(self._on_hook_menu)
 
@@ -369,9 +454,12 @@ class Plugin:
             self.app.show_progress('r2: decompiling function')
             self._working = True
 
-            self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
-            self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
-            self.r2decompiler.start()
+            if not self.r2decompiler:
+                self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
+                self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
+
+            if not self.r2decompiler.isRunning():
+                self.r2decompiler.start()
 
     def show_graph_view(self):
         if self._working:

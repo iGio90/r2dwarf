@@ -1,3 +1,19 @@
+"""
+Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>
+"""
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 
@@ -23,6 +39,9 @@ class EVarsList(DwarfListView):
 
         self.plugin = plugin
 
+        self.e_vars_refresher = RefreshVars(self.plugin)
+        self.e_vars_refresher.onFinishVarsRefresh.connect(self.on_vars_refresh)
+
         self.e_list_model = QStandardItemModel(0, 2)
         self.e_list_model.setHeaderData(0, Qt.Horizontal, 'e vars')
         self.e_list_model.setHeaderData(1, Qt.Horizontal, '')
@@ -35,19 +54,19 @@ class EVarsList(DwarfListView):
         item = self.e_list_model.item(row, 0).text()
         item_val = self.e_list_model.item(row, 1).text()
         accept, res = InputDialog.input(parent=self.plugin.app, hint=item, input_content=item_val, placeholder=item_val)
-        if accept and len(res) > 0 and self.plugin.pipe is not None:
+        if accept and res and self.plugin.pipe is not None:
             self.plugin.pipe.cmd('e %s = %s' % (item, res))
 
     def refresh_e_vars_list(self):
         if self.plugin.pipe is not None:
             self.e_list_model.setRowCount(0)
 
-            self.e_vars_refresher = RefreshVars(self.plugin)
-            self.e_vars_refresher.onFinishVarsRefresh.connect(self.on_vars_refresh)
-            self.e_vars_refresher.start()
+            if not self.e_vars_refresher.isRunning():
+                self.e_vars_refresher.start()
 
     def on_vars_refresh(self, data):
-        e_vars = data[0]
+        import json
+        e_vars = json.loads(data[0])
         for key in e_vars:
             var_name = QStandardItem(key)
             var_value = QStandardItem(str(e_vars[key]))
