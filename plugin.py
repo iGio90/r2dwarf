@@ -19,17 +19,14 @@ import json
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from PyQt5.QtWidgets import QSplitter, QAction
+from PyQt5.QtWidgets import QDockWidget
 
 from lib import utils
-from lib.prefs import Prefs
-from lib.types.range import Range
 from plugins.r2dwarf.src.decompiler import R2DecompiledText, R2Decompiler
-from plugins.r2dwarf.src.dialog_options import OptionsDialog, KEY_WIDESCREEN_MODE
 from plugins.r2dwarf.src.graph import R2Graph
 from plugins.r2dwarf.src.main_widget import R2Widget
 from plugins.r2dwarf.src.pipe import R2Pipe
-from plugins.r2dwarf.src.scrollarea import R2ScrollArea
+from ui.panels.panel_debug import DEBUG_VIEW_MEMORY, DEBUG_VIEW_DISASSEMBLY
 from ui.widgets.list_view import DwarfListView
 
 
@@ -49,11 +46,6 @@ class Plugin:
         if self.menu_items:
             return self.menu_items
 
-        options = QAction('Options')
-        options.triggered.connect(
-            lambda: OptionsDialog.show_dialog(self._prefs))
-
-        self.menu_items.append(options)
         return self.menu_items
 
     def __get_agent__(self):
@@ -77,22 +69,26 @@ class Plugin:
         # block the creation of pipe on fatal errors
         self.pipe_locker = False
 
-        self._prefs = Prefs()
-        self._prefs.prefsChanged.connect(self._on_prefs_changed)
         self.pipe = None
         self.current_seek = ''
         self.with_r2dec = False
         self._working = False
 
         self.r2_widget = None
-        self.tabbed_graph_view = None
 
-        self.disassembly_view = None
-        self._decompiled_textview = None
+        self.debug_panel = None
+
+        self.graph_view = None
+        self.dock_graph_view = None
+        self.decompiled_view = None
+        self.dock_decompiled_view = None
+
         self.r2decompiler = None
 
         self.menu_items = []
         self._auto_sized = False
+
+        self._seek_view_type = DEBUG_VIEW_MEMORY
 
         self.app.session_manager.sessionCreated.connect(
             self._on_session_created)
@@ -100,28 +96,6 @@ class Plugin:
             self._on_session_stopped)
         self.app.onSystemUIElementCreated.connect(self._on_ui_element_created)
         self.app.onSystemUIElementRemoved.connect(self._on_close_tab)
-
-    def _on_prefs_changed(self):
-        if self._decompiled_textview:
-            if self._prefs.get(KEY_WIDESCREEN_MODE, False):
-                self._decompiled_textview.setParent(None)
-                self._decompiled_textview = R2DecompiledText(
-                    disasm_view=self.disassembly_view.disasm_view)
-                self.disassembly_view.addWidget(self._decompiled_textview)
-            else:
-                self._decompiled_textview.setParent(None)
-                self._decompiled_textview = R2DecompiledText(
-                    disasm_view=self.disassembly_view.disasm_view)
-                index = self.app.main_tabs.indexOf(self._decompiled_textview)
-                if index < 0:
-                    index = self.app.main_tabs.addTab(
-                        self._decompiled_textview, 'Decompiler')
-
-                self.app.main_tabs.setCurrentIndex(index)
-
-            # decompile
-            if not self.r2decompiler.isRunning():
-                self.r2decompiler.start()
 
     def _create_pipe(self):
         if self.pipe_locker:
@@ -161,64 +135,90 @@ class Plugin:
         pipe.open()
         return pipe
 
-    def _on_disasm_view_key_press(self, event_key, event_modifiers):
-        if event_key == Qt.Key_Space:
-            self.show_graph_view()
-
-    def _on_disassemble(self, dwarf_range):
-        if self.pipe is None:
-            self._create_pipe()
-
-        self.disassembly_view.disasm_view._lines.clear()
-        self.disassembly_view.disasm_view.viewport().update()
-
-        if self.disassembly_view.graph_view is not None:
-            self.disassembly_view.graph_view.setParent(None)
-            self.disassembly_view.graph_view = None
-
-        if self.pipe is not None:
-            # TODO: analyze the location
-            start_address = hex(dwarf_range.user_req_start_address)
-            if self.current_seek != start_address:
-                self.current_seek = start_address
-                self.pipe.cmd('s %s' % self.current_seek)
-
-            if self.call_refs_model is not None:
-                self.call_refs_model.setRowCount(0)
-            if self.code_xrefs_model is not None:
-                self.code_xrefs_model.setRowCount(0)
+    def _apply_range_impl(self, address, view=DEBUG_VIEW_MEMORY):
+        if self._working:
+            utils.show_message_box('please wait for the other works to finish')
         else:
-            self._on_finish_analysis([dwarf_range, {}])
+            if self.pipe is None:
+                self._create_pipe()
 
-        # decompile when decompiledtext is open
-        if self._decompiled_textview and self.r2decompiler:
-            self.r2decompiler.start()
+            self._working = True
+
+            dwarf_range = self._default_range_for_view(view)
+            if dwarf_range is not None:
+                if self.pipe is not None:
+                    start_address = hex(address)
+                    if self.current_seek != start_address:
+                        self.current_seek = start_address
+                        self._seek_view_type = view
+                        self.pipe.cmd('s %s' % self.current_seek)
+
+                    if self.call_refs_model is not None:
+                        self.call_refs_model.setRowCount(0)
+                    if self.code_xrefs_model is not None:
+                        self.code_xrefs_model.setRowCount(0)
+                else:
+                    self._on_finish_analysis([dwarf_range, {}])
+
+    def _default_range_for_view(self, view):
+        if view == DEBUG_VIEW_MEMORY:
+            return self.debug_panel.memory_panel_range
+        elif view == DEBUG_VIEW_DISASSEMBLY:
+            return self.debug_panel.disassembly_panel_range
+        return None
 
     def _on_finish_analysis(self, data):
-        self.app.hide_progress()
-        self._working = False
+        # this will be done later by graph finished or decompiler finished
+        # self._working = False
+        # self.app.hide_progress()
 
         dwarf_range = data[0]
         if not dwarf_range:
-            dwarf_range = self.disassembly_view._range
+            dwarf_range = self._default_range_for_view(self._seek_view_type)
             if not dwarf_range:
                 return
 
-        # NOTE: keep the replace for compatibility
-        cmd_result = self.pipe.cmdj('afij').replace('&nbsp;', '')
-        function_info = json.loads(cmd_result)
-        if function_info:
-            function_info = function_info[0]
+        if self._seek_view_type == DEBUG_VIEW_MEMORY:
+            self.debug_panel.memory_panel_range = dwarf_range
 
-        num_instructions = 0
-        if 'offset' in function_info:
-            dwarf_range.user_req_start_offset = function_info['offset'] - \
-                dwarf_range.base
-            num_instructions = int(self.pipe.cmd('pif~?'))
+            self.debug_panel.memory_panel.set_data(
+                self.debug_panel.memory_panel_range.data,
+                base=dwarf_range.base, focus_address=dwarf_range.user_req_start_address)
+            if not self.debug_panel.dock_memory_panel.isVisible():
+                self.debug_panel.dock_memory_panel.show()
+            self.debug_panel.raise_memory_panel()
 
-        if self.disassembly_view is not None:
-            self.disassembly_view.disasm_view.start_disassemble(
-                dwarf_range, num_instructions=num_instructions - 1)
+            if self.debug_panel.disassembly_panel_range is None:
+                self.debug_panel.disassembly_panel_range = dwarf_range
+                self.debug_panel.disassembly_panel.apply_range(dwarf_range)
+        elif self._seek_view_type == DEBUG_VIEW_DISASSEMBLY:
+            self.debug_panel.disassembly_panel_range = dwarf_range
+
+            # NOTE: keep the replace for compatibility
+            cmd_result = self.pipe.cmdj('afij').replace('&nbsp;', '')
+            function_info = json.loads(cmd_result)
+            if function_info:
+                function_info = function_info[0]
+
+            num_instructions = 0
+            if 'offset' in function_info:
+                dwarf_range.user_req_start_offset = function_info['offset'] - dwarf_range.base
+                num_instructions = int(self.pipe.cmd('pif~?'))
+
+            self.debug_panel.disassembly_panel.apply_range(
+                self.debug_panel.disassembly_panel_range, num_instructions=num_instructions)
+            if not self.debug_panel.dock_disassembly_panel.isVisible():
+                self.debug_panel.dock_disassembly_panel.show()
+            self.debug_panel.raise_disassembly_panel()
+
+            if self.debug_panel.memory_panel_range is None:
+                self.debug_panel.memory_panel_range = dwarf_range
+                self.debug_panel.memory_panel.set_data(
+                    self.debug_panel.memory_panel_range.data,
+                    base=dwarf_range.base, focus_address=dwarf_range.user_req_start_address)
+
+            self.graph_view.clear()
+            self.decompiled_view.clear()
 
             if 'callrefs' in function_info:
                 for ref in function_info['callrefs']:
@@ -235,9 +235,14 @@ class Plugin:
                         QStandardItem(ref['type'])
                     ])
 
-            if data and len(data) > 1:
-                map = data[1]
-                self.disassembly_view.update_functions(functions_list=map)
+        map_ = {}
+        if data and len(data) > 1:
+            map_ = data[1]
+        self.debug_panel.update_functions(functions_list=map_)
+
+        self.r2graph = R2Graph(self.pipe)
+        self.r2graph.onR2Graph.connect(self._on_finish_graph)
+        self.r2graph.start()
 
     def _on_finish_graph(self, data):
         self.app.hide_progress()
@@ -245,31 +250,23 @@ class Plugin:
 
         graph_data = data[0]
 
-        if self._prefs.get(KEY_WIDESCREEN_MODE, False):
-            if self.disassembly_view.graph_view is None:
-                self.disassembly_view.graph_view = R2ScrollArea()
-                self.disassembly_view.addWidget(
-                    self.disassembly_view.graph_view)
-            self.disassembly_view.graph_view.setText(
-                '<pre>' + graph_data + '</pre>')
+        self.graph_view.appendHtml('<pre>' + graph_data + '</pre>')
+
+        if self.with_r2dec:
+            self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
+            self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
         else:
-            if self.tabbed_graph_view is None:
-                self.tabbed_graph_view = R2ScrollArea()
-            index = self.app.main_tabs.indexOf(self.tabbed_graph_view)
-            if index < 0:
-                self.app.main_tabs.addTab(self.tabbed_graph_view, 'graph')
-                index = self.app.main_tabs.indexOf(self.tabbed_graph_view)
-            self.tabbed_graph_view.setText('<pre>' + graph_data + '</pre>')
-            self.app.main_tabs.setCurrentIndex(index)
+            self._working = False
+            self.app.hide_progress()
 
     def _on_finish_decompiler(self, data):
         if not self.with_r2dec:
             return
 
-        self.app.hide_progress()
         self._working = False
-        import re
+        self.app.hide_progress()
 
+        import re
         # keep until ?
         data[0] = re.sub(r'\d+;\d+;\d+;\d+;', '', data[0])
         data[0] = data[0].replace('<', '&lt;').replace('>', '&gt;')
@@ -299,32 +296,6 @@ class Plugin:
         decompile_data = json.loads(decompile_data)
 
         if decompile_data:
-            if not self._decompiled_textview:
-                self._decompiled_textview = R2DecompiledText(
-                    disasm_view=self.disassembly_view.disasm_view)
-
-            self._decompiled_textview.clear()
-            if self._prefs.get(KEY_WIDESCREEN_MODE, False):
-                if not self._decompiled_textview:
-                    self.disassembly_view.addWidget(self._decompiled_textview)
-
-                if not self._auto_sized:
-                    self._auto_sized = True
-                    main_width = self.disassembly_view.width()
-                    childs = self.disassembly_view.count()
-                    new_sizes = [1, 1]
-                    for _ in range(2, childs):
-                        new_sizes.append(main_width / childs)
-
-                    self.disassembly_view.setSizes(new_sizes)
-            else:
-                index = self.app.main_tabs.indexOf(self._decompiled_textview)
-                if index < 0:
-                    index = self.app.main_tabs.addTab(
-                        self._decompiled_textview, 'Decompiler')
-
-                self.app.main_tabs.setCurrentIndex(index)
-
             # parse
             if 'lines' in decompile_data and decompile_data['lines']:
                 for line in decompile_data['lines']:
@@ -346,21 +317,7 @@ class Plugin:
                         if 'offset' in line:
                             new_line += '</a>'
 
-                        self._decompiled_textview.appendHtml(new_line)
-
-    def _on_hook_menu(self, menu, address):
-        menu.addSeparator()
-        r2_menu = menu.addMenu('r2')
-
-        view_menu = r2_menu.addMenu('view')
-        graph = view_menu.addAction('graph view', self.show_graph_view)
-        # show only when r2dec is in place
-        if self.with_r2dec:
-            decompile = view_menu.addAction(
-                'decompile', self.show_decompiler_view)
-        if address == -1:
-            graph.setEnabled(False)
-            decompile.setEnabled(False)
+                        self.decompiled_view.appendHtml(new_line)
 
     def _on_pipe_error(self, reason):
         should_recreate_pipe = True
@@ -426,19 +383,9 @@ class Plugin:
             self.pipe.close()
 
     def _on_ui_element_created(self, elem, widget):
-        if elem == 'disassembly':
-            self.disassembly_view = widget
-            self.disassembly_view.graph_view = None
-            self._decompiled_textview = None
-
-            self.disassembly_view.disasm_view.run_default_disassembler = False
-            self.disassembly_view.disasm_view.onDisassemble.connect(
-                self._on_disassemble)
-            self.disassembly_view.disasm_view.onDisasmViewKeyPressEvent.connect(
-                self._on_disasm_view_key_press)
-
-            r2_function_refs = QSplitter()
-            r2_function_refs.setOrientation(Qt.Vertical)
+        if elem == 'debug':
+            self.debug_panel = widget
+            self.debug_panel._apply_range = self._apply_range_impl
 
             call_refs = DwarfListView()
             self.call_refs_model = QStandardItemModel(0, 3)
@@ -449,6 +396,11 @@ class Plugin:
                 lambda x: self.disasm_ref_double_click(self.call_refs_model, x))
             call_refs.setModel(self.call_refs_model)
 
+            dock_call_refs = QDockWidget('Call refs', self.debug_panel)
+            dock_call_refs.setObjectName('callrefs')
+            self.debug_panel.addDockWidget(Qt.LeftDockWidgetArea, dock_call_refs)
+            self.app.debug_view_menu.addAction(dock_call_refs.toggleViewAction())
+
             code_xrefs = DwarfListView()
             self.code_xrefs_model = QStandardItemModel(0, 3)
             self.code_xrefs_model.setHeaderData(0, Qt.Horizontal, 'code xrefs')
@@ -458,52 +410,36 @@ class Plugin:
                 lambda x: self.disasm_ref_double_click(self.code_xrefs_model, x))
             code_xrefs.setModel(self.code_xrefs_model)
 
-            r2_function_refs.addWidget(call_refs)
-            r2_function_refs.addWidget(code_xrefs)
-            r2_function_refs.setSizes([50, 50])
+            dock_code_xrefs = QDockWidget('Code xrefs', self.debug_panel)
+            dock_code_xrefs.setObjectName('codexrefs')
+            self.debug_panel.addDockWidget(Qt.LeftDockWidgetArea, dock_code_xrefs)
+            self.app.debug_view_menu.addAction(dock_code_xrefs.toggleViewAction())
 
-            self.disassembly_view.insertWidget(1, r2_function_refs)
-            self.disassembly_view.setSizes(
-                [50, 50, self.disassembly_view.width() - 100])
+            self.add_graph_view()
+            self.add_decompiler_view()
+            self.debug_panel.raise_disassembly_panel()
 
-            self.disassembly_view.disasm_view.menu_extra_menu_hooks.append(
-                self._on_hook_menu)
+            self.debug_panel.restoreUiState()
 
     def _on_close_tab(self, name):
         if name == 'r2':
             self.r2_widget = None
 
-    def show_decompiler_view(self):
-        if self._working:
-            utils.show_message_box('please wait for the other works to finish')
-        else:
-            self.app.show_progress('r2: decompiling function')
-            self._working = True
+    def add_decompiler_view(self):
+        self.decompiled_view = R2DecompiledText(disasm_view=self.debug_panel.disassembly_panel)
+        self.dock_decompiled_view = QDockWidget('Decompiler', self.debug_panel)
+        self.dock_decompiled_view.setObjectName('decompiler')
+        self.debug_panel.addDockWidget(Qt.RightDockWidgetArea, self.dock_decompiled_view)
+        self.debug_panel.tabifyDockWidget(self.debug_panel.dock_disassembly_panel, self.dock_decompiled_view)
 
-            if not self.r2decompiler:
-                self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
-                self.r2decompiler.onR2Decompiler.connect(
-                    self._on_finish_decompiler)
-
-            if not self.r2decompiler.isRunning():
-                self.r2decompiler.start()
-
-    def show_graph_view(self):
-        if self._working:
-            utils.show_message_box('please wait for the other works to finish')
-        else:
-            self.app.show_progress('r2: building graph view')
-            self._working = True
-
-            self.r2graph = R2Graph(self.pipe)
-            self.r2graph.onR2Graph.connect(self._on_finish_graph)
-            self.r2graph.start()
+    def add_graph_view(self):
+        self.graph_view = R2DecompiledText(disasm_view=self.debug_panel.disassembly_panel)
+        self.dock_graph_view = QDockWidget('Graph', self.debug_panel)
+        self.dock_graph_view.setObjectName('graph')
+        self.debug_panel.addDockWidget(Qt.RightDockWidgetArea, self.dock_graph_view)
+        self.debug_panel.tabifyDockWidget(self.debug_panel.dock_disassembly_panel, self.dock_graph_view)
 
     def disasm_ref_double_click(self, model, modelIndex):
         ptr = utils.parse_ptr(model.item(
             model.itemFromIndex(modelIndex).row(), 0).text())
-        line = self.disassembly_view.disasm_view.get_line_for_address(ptr)
-        if line >= 0:
-            self.disassembly_view.disasm_view.verticalScrollBar().setValue(line)
-        else:
-            Range.build_or_get(self.app.dwarf, ptr, cb=self._on_disassemble)
+        self.debug_panel.jump_to_address(ptr, DEBUG_VIEW_DISASSEMBLY)

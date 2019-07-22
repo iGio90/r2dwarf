@@ -97,11 +97,11 @@ class R2Pipe(QObject):
             return None
 
     def map_ptr(self, hex_ptr, sync=False):
-        self.plugin.app.show_progress('r2: reading at %s' % hex_ptr)
         self.plugin._working = True
 
         if sync:
-            self.map(self.get_reange(self.plugin, int(hex_ptr, 16)))
+            dwarf_range = Range.build_or_get(self.dwarf, hex_ptr)
+            self.map(dwarf_range)
         else:
             Range.build_or_get(self.dwarf, hex_ptr, cb=self.map)
 
