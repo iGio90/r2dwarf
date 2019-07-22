@@ -255,14 +255,12 @@ class Plugin:
         if self.with_r2dec:
             self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
             self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
+            self.r2decompiler.start()
         else:
             self._working = False
             self.app.hide_progress()
 
     def _on_finish_decompiler(self, data):
-        if not self.with_r2dec:
-            return
-
         self._working = False
         self.app.hide_progress()
 
@@ -398,6 +396,7 @@ class Plugin:
 
             dock_call_refs = QDockWidget('Call refs', self.debug_panel)
             dock_call_refs.setObjectName('callrefs')
+            dock_call_refs.setWidget(call_refs)
             self.debug_panel.addDockWidget(Qt.LeftDockWidgetArea, dock_call_refs)
             self.app.debug_view_menu.addAction(dock_call_refs.toggleViewAction())
 
@@ -413,6 +412,7 @@ class Plugin:
             dock_code_xrefs = QDockWidget('Code xrefs', self.debug_panel)
             dock_code_xrefs.setObjectName('codexrefs')
             self.debug_panel.addDockWidget(Qt.LeftDockWidgetArea, dock_code_xrefs)
+            dock_code_xrefs.setWidget(code_xrefs)
             self.app.debug_view_menu.addAction(dock_code_xrefs.toggleViewAction())
 
             self.add_graph_view()
@@ -429,6 +429,7 @@ class Plugin:
         self.decompiled_view = R2DecompiledText(disasm_view=self.debug_panel.disassembly_panel)
         self.dock_decompiled_view = QDockWidget('Decompiler', self.debug_panel)
         self.dock_decompiled_view.setObjectName('decompiler')
+        self.dock_decompiled_view.setWidget(self.decompiled_view)
         self.debug_panel.addDockWidget(Qt.RightDockWidgetArea, self.dock_decompiled_view)
         self.debug_panel.tabifyDockWidget(self.debug_panel.dock_disassembly_panel, self.dock_decompiled_view)
 
@@ -436,6 +437,7 @@ class Plugin:
         self.graph_view = R2DecompiledText(disasm_view=self.debug_panel.disassembly_panel)
         self.dock_graph_view = QDockWidget('Graph', self.debug_panel)
         self.dock_graph_view.setObjectName('graph')
+        self.dock_graph_view.setWidget(self.graph_view)
         self.debug_panel.addDockWidget(Qt.RightDockWidgetArea, self.dock_graph_view)
         self.debug_panel.tabifyDockWidget(self.debug_panel.dock_disassembly_panel, self.dock_graph_view)
 
