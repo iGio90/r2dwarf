@@ -198,14 +198,20 @@ class Plugin:
 
             # NOTE: keep the replace for compatibility
             cmd_result = self.pipe.cmdj('afij').replace('&nbsp;', '')
-            function_info = json.loads(cmd_result)
-            if function_info:
+            function_info = None
+            num_instructions = 0
+
+            try:
+                function_info = json.loads(cmd_result)
+            except:
+                pass
+
+            if function_info is not None and len(function_info) > 0:
                 function_info = function_info[0]
 
-            num_instructions = 0
-            if 'offset' in function_info:
-                dwarf_range.user_req_start_offset = function_info['offset'] - dwarf_range.base
-                num_instructions = int(self.pipe.cmd('pif~?'))
+                if 'offset' in function_info:
+                    dwarf_range.user_req_start_offset = function_info['offset'] - dwarf_range.base
+                    num_instructions = int(self.pipe.cmd('pif~?'))
 
             self.debug_panel.disassembly_panel.apply_range(
                 self.debug_panel.disassembly_panel_range, num_instructions=num_instructions)

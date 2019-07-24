@@ -40,6 +40,7 @@ class R2Analysis(QThread):
         func_map = {}
         for fn in functions:
             fn = fn.split(' ')
-            func_map[fn[len(fn) - 1]] = int(fn[0], 16)
+            if fn[0] != '':
+                func_map[fn[len(fn) - 1]] = int(fn[0], 16)
 
         self.onR2AnalysisFinished.emit([self._dwarf_range, func_map])
