@@ -279,6 +279,8 @@ class Plugin:
         regex = r'\\u001b(\[[0-?]*[ -/]*[@-~])(.*?)\\u001b\[[0-?]*[ -/]*[@-~]'
         decompile_data = re.sub(regex, r"<font color='\1'>\2</font>", data[0])
 
+        hex_regex = r'(0x[a-f0-9]+)'
+
         colors = {
             # comment == orgcolor
             '[30m': '#666',  # black
@@ -317,7 +319,9 @@ class Plugin:
                                 hex(line['offset']) + \
                                 '" style="color: #666; text-decoration: none;">'
 
-                        new_line += line['str'].lstrip()
+                        line_content = line['str'].lstrip()
+                        new_line += re.sub(
+                            hex_regex, "<a style=\"color: #8B0000; text-decoration: none;\" href=\"jump:\\1\">\\1</a>", line_content)
 
                         if 'offset' in line:
                             new_line += '</a>'
@@ -436,7 +440,7 @@ class Plugin:
             self.r2_widget = None
 
     def add_decompiler_view(self):
-        self.decompiled_view = R2DecompiledText(disasm_view=self.debug_panel.disassembly_panel)
+        self.decompiled_view = R2DecompiledText(debug_panel=self.debug_panel)
         self.dock_decompiled_view = QDockWidget('Decompiler', self.debug_panel)
         self.dock_decompiled_view.setObjectName('decompiler')
         self.dock_decompiled_view.setWidget(self.decompiled_view)
@@ -445,7 +449,7 @@ class Plugin:
         self.app.debug_view_menu.addAction(self.dock_decompiled_view.toggleViewAction())
 
     def add_graph_view(self):
-        self.graph_view = R2DecompiledText(disasm_view=self.debug_panel.disassembly_panel)
+        self.graph_view = R2DecompiledText(debug_panel=self.debug_panel)
         self.dock_graph_view = QDockWidget('Graph', self.debug_panel)
         self.dock_graph_view.setObjectName('graph')
         self.dock_graph_view.setWidget(self.graph_view)
