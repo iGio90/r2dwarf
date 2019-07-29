@@ -40,7 +40,17 @@ class R2Pipe(QObject):
         self.process = None
         self._working = False
 
+        self._cleanup()
+
         self.r2_pipe_local_path = os.path.abspath('.r2pipe_%d' % time.time())
+        os.mkdir(self.r2_pipe_local_path)
+
+    def _cleanup(self):
+        if os.name != 'nt':
+            utils.do_shell_command("pkill radare2")
+        else:
+            utils.do_shell_command("tskill radare2 /a")
+
         for path in os.listdir('.'):
             if '.r2pipe' in path:
                 try:
@@ -48,15 +58,9 @@ class R2Pipe(QObject):
                 except:
                     # instance of dwarf already running
                     pass
-        os.mkdir(self.r2_pipe_local_path)
-
-        self.close()
 
     def close(self):
-        if os.name != 'nt':
-            utils.do_shell_command("pkill radare2")
-        else:
-            utils.do_shell_command("tskill radare2")
+        self._cleanup()
 
     def open(self):
         r2e = 'radare2'
