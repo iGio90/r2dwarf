@@ -49,7 +49,7 @@ class R2Pipe(QObject):
         if os.name != 'nt':
             utils.do_shell_command("pkill radare2")
         else:
-            utils.do_shell_command("tskill radare2 /a")
+            utils.do_shell_command("tskill radare2")
 
         for path in os.listdir('.'):
             if '.r2pipe' in path:
