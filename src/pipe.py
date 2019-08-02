@@ -49,7 +49,11 @@ class R2Pipe(QObject):
         if os.name != 'nt':
             utils.do_shell_command("pkill radare2")
         else:
-            utils.do_shell_command("tskill radare2")
+            try:
+                utils.do_shell_command("tskill radare2")
+            except IOError as io_error:
+                if io_error.errno == 2:
+                    print('error: cant execute tskill')
 
         for path in os.listdir('.'):
             if '.r2pipe' in path:
