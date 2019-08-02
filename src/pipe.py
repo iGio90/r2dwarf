@@ -50,7 +50,8 @@ class R2Pipe(QObject):
             utils.do_shell_command("pkill radare2")
         else:
             try:
-                utils.do_shell_command("tskill radare2")
+                utils.do_shell_command("taskkill /IM radare2.exe /F")
+                #utils.do_shell_command("tskill radare2")
             except IOError as io_error:
                 if io_error.errno == 2:
                     print('error: cant execute tskill')
