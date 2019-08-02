@@ -21,11 +21,11 @@ import time
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
-from lib import utils
+from dwarf.lib import utils
 from subprocess import *
 
-from lib.types.range import Range
-from plugins.r2dwarf.src.analysis import R2Analysis
+from dwarf.lib.types.range import Range
+from r2dwarf.src.analysis import R2Analysis
 
 
 class R2Pipe(QObject):

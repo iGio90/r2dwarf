@@ -17,8 +17,8 @@ Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 
-from ui.dialogs.dialog_input import InputDialog
-from ui.widgets.list_view import DwarfListView
+from dwarf.ui.dialogs.dialog_input import InputDialog
+from dwarf.ui.widgets.list_view import DwarfListView
 
 
 class RefreshVars(QThread):

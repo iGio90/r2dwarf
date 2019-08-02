@@ -18,7 +18,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QCursor
 from PyQt5.QtWidgets import QPlainTextEdit, QMenu
 
-from lib import utils
+from dwarf.lib import utils
 
 
 class R2Decompiler(QThread):

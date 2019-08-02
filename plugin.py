@@ -21,13 +21,13 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QDockWidget
 
-from lib import utils
-from plugins.r2dwarf.src.decompiler import R2DecompiledText, R2Decompiler
-from plugins.r2dwarf.src.graph import R2Graph
-from plugins.r2dwarf.src.main_widget import R2Widget
-from plugins.r2dwarf.src.pipe import R2Pipe
-from ui.panels.panel_debug import DEBUG_VIEW_MEMORY, DEBUG_VIEW_DISASSEMBLY
-from ui.widgets.list_view import DwarfListView
+from dwarf.lib import utils
+from r2dwarf.src.decompiler import R2DecompiledText, R2Decompiler
+from r2dwarf.src.graph import R2Graph
+from r2dwarf.src.main_widget import R2Widget
+from r2dwarf.src.pipe import R2Pipe
+from dwarf.ui.panels.panel_debug import DEBUG_VIEW_MEMORY, DEBUG_VIEW_DISASSEMBLY
+from dwarf.ui.widgets.list_view import DwarfListView
 
 
 class Plugin:
