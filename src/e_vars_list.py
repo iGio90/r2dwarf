@@ -14,6 +14,8 @@ Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
+import json
+
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 
@@ -29,7 +31,7 @@ class RefreshVars(QThread):
         self.plugin = plugin
 
     def run(self):
-        e_vars = self.plugin.pipe.cmdj('ej')
+        e_vars = self.plugin.pipe._cmd_process('ej')
         self.onFinishVarsRefresh.emit([e_vars])
 
 
