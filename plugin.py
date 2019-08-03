@@ -213,8 +213,12 @@ class Plugin:
                     dwarf_range.user_req_start_offset = function_info['offset'] - dwarf_range.base
                     num_instructions = int(self.pipe.cmd('pif~?'))
 
-            self.debug_panel.disassembly_panel.apply_range(
-                self.debug_panel.disassembly_panel_range, num_instructions=num_instructions)
+            self.debug_panel.disassembly_panel.disasm(
+                self.debug_panel.disassembly_panel_range.base,
+                self.debug_panel.disassembly_panel_range.data,
+                self.debug_panel.disassembly_panel_range.user_req_start_offset,
+                num_instructions=num_instructions)
+
             if not self.debug_panel.dock_disassembly_panel.isVisible():
                 self.debug_panel.dock_disassembly_panel.show()
             self.debug_panel.raise_disassembly_panel()
