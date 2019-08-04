@@ -189,7 +189,7 @@ class Plugin:
                 self.debug_panel.dock_memory_panel.show()
             self.debug_panel.raise_memory_panel()
 
-            if self.debug_panel.disassembly_panel_range.number_of_lines() == 0:
+            if self.debug_panel.disassembly_panel.number_of_lines() == 0:
                 self.debug_panel.disassembly_panel.disasm(data[0], data[1], data[2])
         elif self._seek_view_type == DEBUG_VIEW_DISASSEMBLY:
             # NOTE: keep the replace for compatibility
