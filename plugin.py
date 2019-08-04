@@ -184,7 +184,7 @@ class Plugin:
         # self.app.hide_progress()
 
         if self._seek_view_type == DEBUG_VIEW_MEMORY:
-            self.debug_panel.memory_panel.set_data(data[1], base=data[0], focus_address=data[2])
+            self.debug_panel.memory_panel.set_data(data[1], base=data[0], offset=data[2])
             if not self.debug_panel.dock_memory_panel.isVisible():
                 self.debug_panel.dock_memory_panel.show()
             self.debug_panel.raise_memory_panel()
