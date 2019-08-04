@@ -20,14 +20,22 @@ from PyQt5.QtCore import QThread, pyqtSignal
 class R2Analysis(QThread):
     onR2AnalysisFinished = pyqtSignal(list, name='onR2AnalysisFinished')
 
-    def __init__(self, pipe, dwarf_range):
+    def __init__(self, pipe, info, data, offset, is_module):
         super(R2Analysis, self).__init__()
         self._pipe = pipe
-        self._dwarf_range = dwarf_range
+        self._info = info
+        self._data = data
+        self._offset = offset
+        self._is_module = is_module
 
     def run(self):
         self._pipe.cmd('e anal.from = %d; e anal.to = %d; e anal.in = raw' % (
-            self._dwarf_range.base, self._dwarf_range.tail))
+            self._info.base, self._info.base + self._info.size))
+
+        if self._is_module:
+            # todo: map exports/imports into r2
+            pass
+
         self._pipe.cmd('aa')
         self._pipe.cmd('aac*')
         self._pipe.cmd('aar')
@@ -43,4 +51,4 @@ class R2Analysis(QThread):
             if fn[0] != '':
                 func_map[fn[len(fn) - 1]] = int(fn[0], 16)
 
-        self.onR2AnalysisFinished.emit([self._dwarf_range, func_map])
+        self.onR2AnalysisFinished.emit([self._info.base, self._data, self._offset, func_map])

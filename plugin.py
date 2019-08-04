@@ -137,7 +137,7 @@ class Plugin:
         pipe.open()
         return pipe
 
-    def _apply_range_impl(self, address, view=DEBUG_VIEW_MEMORY):
+    def _jump_to_address_impl(self, address, view=DEBUG_VIEW_MEMORY):
         if self._working:
             utils.show_message_box('please wait for the other works to finish')
         else:
@@ -146,21 +146,30 @@ class Plugin:
 
             self._working = True
 
-            dwarf_range = self._default_range_for_view(view)
-            if dwarf_range is not None:
-                if self.pipe is not None:
-                    start_address = hex(address)
-                    if self.current_seek != start_address:
-                        self.current_seek = start_address
-                        self._seek_view_type = view
-                        self.pipe.cmd('s %s' % self.current_seek)
+            address = utils.parse_ptr(address)
 
-                    if self.call_refs_model is not None:
-                        self.call_refs_model.setRowCount(0)
-                    if self.code_xrefs_model is not None:
-                        self.code_xrefs_model.setRowCount(0)
-                else:
-                    self._on_finish_analysis([dwarf_range, {}])
+            if view == DEBUG_VIEW_MEMORY:
+                if self.debug_panel.memory_panel.number_of_lines() > 0:
+                    if self.debug_panel.is_address_in_view(view, address):
+                        return
+            elif view == DEBUG_VIEW_DISASSEMBLY:
+                if self.debug_panel.disassembly_panel.number_of_lines() > 0:
+                    if self.debug_panel.is_address_in_view(view, address):
+                        return
+
+            if self.pipe is not None:
+                start_address = hex(address)
+                if self.current_seek != start_address:
+                    self.current_seek = start_address
+                    self._seek_view_type = view
+                    self.pipe.cmd('s %s' % self.current_seek)
+
+                if self.call_refs_model is not None:
+                    self.call_refs_model.setRowCount(0)
+                if self.code_xrefs_model is not None:
+                    self.code_xrefs_model.setRowCount(0)
+            else:
+                self._on_finish_analysis([0, bytes(), 0])
 
     def _default_range_for_view(self, view):
         if view == DEBUG_VIEW_MEMORY:
@@ -174,28 +183,15 @@ class Plugin:
         # self._working = False
         # self.app.hide_progress()
 
-        dwarf_range = data[0]
-        if not dwarf_range:
-            dwarf_range = self._default_range_for_view(self._seek_view_type)
-            if not dwarf_range:
-                return
-
         if self._seek_view_type == DEBUG_VIEW_MEMORY:
-            self.debug_panel.memory_panel_range = dwarf_range
-
-            self.debug_panel.memory_panel.set_data(
-                self.debug_panel.memory_panel_range.data,
-                base=dwarf_range.base, focus_address=dwarf_range.user_req_start_address)
+            self.debug_panel.memory_panel.set_data(data[1], base=data[0], focus_address=data[2])
             if not self.debug_panel.dock_memory_panel.isVisible():
                 self.debug_panel.dock_memory_panel.show()
             self.debug_panel.raise_memory_panel()
 
-            if self.debug_panel.disassembly_panel_range is None:
-                self.debug_panel.disassembly_panel_range = dwarf_range
-                self.debug_panel.disassembly_panel.apply_range(dwarf_range)
+            if self.debug_panel.disassembly_panel_range.number_of_lines() == 0:
+                self.debug_panel.disassembly_panel.disasm(data[0], data[1], data[2])
         elif self._seek_view_type == DEBUG_VIEW_DISASSEMBLY:
-            self.debug_panel.disassembly_panel_range = dwarf_range
-
             # NOTE: keep the replace for compatibility
             cmd_result = self.pipe.cmdj('afij').replace('&nbsp;', '')
             function_info = None
@@ -210,24 +206,18 @@ class Plugin:
                 function_info = function_info[0]
 
                 if 'offset' in function_info:
-                    dwarf_range.user_req_start_offset = function_info['offset'] - dwarf_range.base
+                    data[2] = function_info['offset'] - data[0]
                     num_instructions = int(self.pipe.cmd('pif~?'))
 
             self.debug_panel.disassembly_panel.disasm(
-                self.debug_panel.disassembly_panel_range.base,
-                self.debug_panel.disassembly_panel_range.data,
-                self.debug_panel.disassembly_panel_range.user_req_start_offset,
-                num_instructions=num_instructions)
+                data[0], data[1], data[2], num_instructions=num_instructions)
 
             if not self.debug_panel.dock_disassembly_panel.isVisible():
                 self.debug_panel.dock_disassembly_panel.show()
             self.debug_panel.raise_disassembly_panel()
 
-            if self.debug_panel.memory_panel_range is None:
-                self.debug_panel.memory_panel_range = dwarf_range
-                self.debug_panel.memory_panel.set_data(
-                    self.debug_panel.memory_panel_range.data,
-                    base=dwarf_range.base, focus_address=dwarf_range.user_req_start_address)
+            if self.debug_panel.memory_panel.number_of_lines() == 0:
+                self.debug_panel.memory_panel.set_data(data[1], base=data[0], offset=data[2])
 
             self.graph_view.clear()
             self.decompiled_view.clear()
@@ -247,8 +237,8 @@ class Plugin:
                         QStandardItem(ref['type'])
                     ])
 
-        if data and len(data) > 1:
-            map_ = data[1]
+        if len(data) > 3:
+            map_ = data[3]
             self.debug_panel.update_functions(functions_list=map_)
 
         self.r2graph = R2Graph(self.pipe)
@@ -398,7 +388,7 @@ class Plugin:
     def _on_ui_element_created(self, elem, widget):
         if elem == 'debug':
             self.debug_panel = widget
-            self.debug_panel._apply_range = self._apply_range_impl
+            self.debug_panel.jump_to_address = self._jump_to_address_impl
 
             call_refs = DwarfListView()
             self.call_refs_model = QStandardItemModel(0, 3)

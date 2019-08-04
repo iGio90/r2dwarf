@@ -14,18 +14,66 @@ Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
-import json
 import os
 import shutil
 import time
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, QThread
 
 from dwarf.lib import utils
 from subprocess import *
 
-from dwarf.lib.types.range import Range
+from dwarf.lib.types.module_info import ModuleInfo
 from r2dwarf.src.analysis import R2Analysis
+
+
+class SimpleRangeInfo:
+    def __init__(self, base, size):
+        self.base = base
+        self.size = size
+
+
+class MemoryReader(QThread):
+    onR2MemoryReaderFinish = pyqtSignal(ModuleInfo, bytes, int, bool, bool, name='onR2MemoryReaderFinish')
+
+    def __init__(self, pipe, hex_ptr):
+        super().__init__()
+        self.pipe = pipe
+        self.dwarf = pipe.dwarf
+        self.hex_ptr = hex_ptr
+
+    def run(self):
+        self.read_memory()
+
+    def read_memory(self):
+        info = ModuleInfo.build_module_info(self.dwarf, self.hex_ptr, fill_ied=True)
+        is_module = True
+        should_analyze = False
+        if info:
+            offset = int(self.hex_ptr, 16) - info.base
+
+            map_path = os.path.join(self.pipe.r2_pipe_local_path, hex(info.base))
+            if os.path.exists(map_path):
+                with open(map_path, 'rb') as f:
+                    data = f.read()
+            else:
+                should_analyze = True
+                ptr, data = self.dwarf.read_memory(info.base, info.size)
+                with open(map_path, 'wb') as f:
+                    f.write(data)
+                self.pipe.cmd('on %s %s %s' % (map_path, hex(info.base), 'rwx'))
+        else:
+            should_analyze = True
+            is_module = False
+            base, data, offset = self.dwarf.read_range(self.hex_ptr)
+            info = SimpleRangeInfo(base, len(data))
+
+            map_path = os.path.join(self.pipe.r2_pipe_local_path, hex(info.base))
+            if not os.path.exists(map_path):
+                with open(map_path, 'wb') as f:
+                    f.write(data)
+                self.pipe.cmd('on %s %s %s' % (map_path, hex(info.base), 'rwx'))
+        self.onR2MemoryReaderFinish.emit(info, data, offset, is_module, should_analyze)
 
 
 class R2Pipe(QObject):
@@ -108,27 +156,23 @@ class R2Pipe(QObject):
     def map_ptr(self, hex_ptr, sync=False):
         self.plugin._working = True
 
+        self.mem_reader = MemoryReader(self, hex_ptr)
+        self.mem_reader.onR2MemoryReaderFinish.connect(self.memmap)
         if sync:
-            dwarf_range = Range.build_or_get(self.dwarf, hex_ptr)
-            self.memmap(dwarf_range)
+            self.mem_reader.read_memory()
         else:
-            Range.build_or_get(self.dwarf, hex_ptr, cb=self.memmap)
+            self.mem_reader.start()
 
-    def memmap(self, dwarf_range):
-        map_path = os.path.join(self.r2_pipe_local_path, hex(dwarf_range.base))
-        if not os.path.exists(map_path) and dwarf_range.data is not None:
-            with open(map_path, 'wb') as f:
-                f.write(dwarf_range.data)
-            self.cmd('on %s %s %s' % (map_path, hex(dwarf_range.base), dwarf_range.permissions))
-
-            self.plugin.app.show_progress('r2: running analysis at %s' % hex(dwarf_range.base))
+    def memmap(self, info, data, offset, is_module, should_analyze):
+        if not should_analyze or info is None or data is None:
+            self.plugin._on_finish_analysis([info.base, data, offset])
+        else:
+            self.plugin.app.show_progress('r2: running analysis at %s' % hex(info.base))
             self.plugin._working = True
 
-            self.r2analysis = R2Analysis(self, dwarf_range)
+            self.r2analysis = R2Analysis(self, info, data, offset, is_module)
             self.r2analysis.onR2AnalysisFinished.connect(self.plugin._on_finish_analysis)
             self.r2analysis.start()
-        else:
-            self.plugin._on_finish_analysis([dwarf_range])
 
     def _cmd_process(self, cmd):
         if not self.process:
