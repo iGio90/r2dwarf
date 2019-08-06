@@ -34,7 +34,7 @@ class SimpleRangeInfo:
 
 
 class MemoryReader(QThread):
-    onR2MemoryReaderFinish = pyqtSignal(ModuleInfo, bytes, int, bool, bool, name='onR2MemoryReaderFinish')
+    onR2MemoryReaderFinish = pyqtSignal(object, bytes, int, bool, bool, name='onR2MemoryReaderFinish')
 
     def __init__(self, pipe, hex_ptr):
         super().__init__()
@@ -60,7 +60,8 @@ class MemoryReader(QThread):
                 should_analyze = True
                 ptr, data = self.dwarf.read_memory(info.base, info.size)
                 with open(map_path, 'wb') as f:
-                    f.write(data)
+                    if data:
+                        f.write(data)
                 self.pipe.cmd('on %s %s %s' % (map_path, hex(info.base), 'rwx'))
         else:
             should_analyze = True
