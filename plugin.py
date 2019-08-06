@@ -209,6 +209,21 @@ class Plugin:
                     data[2] = function_info['offset'] - data[0]
                     num_instructions = int(self.pipe.cmd('pif~?'))
 
+                if 'callrefs' in function_info:
+                    for ref in function_info['callrefs']:
+                        self.call_refs_model.appendRow([
+                            QStandardItem(hex(ref['addr'])),
+                            QStandardItem(hex(ref['at'])),
+                            QStandardItem(ref['type'])
+                        ])
+                if 'codexrefs' in function_info:
+                    for ref in function_info['codexrefs']:
+                        self.code_xrefs_model.appendRow([
+                            QStandardItem(hex(ref['addr'])),
+                            QStandardItem(hex(ref['at'])),
+                            QStandardItem(ref['type'])
+                        ])
+
             self.debug_panel.disassembly_panel.disasm(
                 data[0], data[1], data[2], num_instructions=num_instructions)
 
@@ -221,21 +236,6 @@ class Plugin:
 
             self.graph_view.clear()
             self.decompiled_view.clear()
-
-            if 'callrefs' in function_info:
-                for ref in function_info['callrefs']:
-                    self.call_refs_model.appendRow([
-                        QStandardItem(hex(ref['addr'])),
-                        QStandardItem(hex(ref['at'])),
-                        QStandardItem(ref['type'])
-                    ])
-            if 'codexrefs' in function_info:
-                for ref in function_info['codexrefs']:
-                    self.code_xrefs_model.appendRow([
-                        QStandardItem(hex(ref['addr'])),
-                        QStandardItem(hex(ref['at'])),
-                        QStandardItem(ref['type'])
-                    ])
 
         if len(data) > 3:
             map_ = data[3]
