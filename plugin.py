@@ -179,9 +179,8 @@ class Plugin:
         return None
 
     def _on_finish_analysis(self, data):
-        # this will be done later by graph finished or decompiler finished
-        # self._working = False
-        # self.app.hide_progress()
+        self._working = False
+        self.app.hide_progress()
 
         if self._seek_view_type == DEBUG_VIEW_MEMORY:
             self.debug_panel.memory_panel.set_data(data[1], base=data[0], offset=data[2])
@@ -246,9 +245,6 @@ class Plugin:
         self.r2graph.start()
 
     def _on_finish_graph(self, data):
-        self.app.hide_progress()
-        self._working = False
-
         graph_data = data[0]
 
         self.graph_view.appendHtml('<pre>' + graph_data + '</pre>')
@@ -257,14 +253,8 @@ class Plugin:
             self.r2decompiler = R2Decompiler(self.pipe, self.with_r2dec)
             self.r2decompiler.onR2Decompiler.connect(self._on_finish_decompiler)
             self.r2decompiler.start()
-        else:
-            self._working = False
-            self.app.hide_progress()
 
     def _on_finish_decompiler(self, data):
-        self._working = False
-        self.app.hide_progress()
-
         import re
         # keep until ?
         data[0] = re.sub(r'\d+;\d+;\d+;\d+;', '', data[0])
