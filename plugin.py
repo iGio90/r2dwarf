@@ -403,7 +403,6 @@ class Plugin:
             dock_call_refs.setObjectName('callrefs')
             dock_call_refs.setWidget(call_refs)
             self.debug_panel.addDockWidget(Qt.LeftDockWidgetArea, dock_call_refs, Qt.Vertical)
-            self.debug_panel.splitDockWidget(self.debug_panel.dock_functions_list, dock_call_refs, Qt.Vertical)
             self.app.debug_view_menu.addAction(dock_call_refs.toggleViewAction())
 
             code_xrefs = DwarfListView()
