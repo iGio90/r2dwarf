@@ -34,7 +34,7 @@ class SimpleRangeInfo:
 
 
 class MemoryReader(QThread):
-    onR2MemoryReaderFinish = pyqtSignal(object, bytes, int, bool, bool, name='onR2MemoryReaderFinish')
+    onR2MemoryReaderFinish = pyqtSignal(object, bytes, int, name='onR2MemoryReaderFinish')
 
     def __init__(self, pipe, hex_ptr):
         super().__init__()
@@ -46,35 +46,15 @@ class MemoryReader(QThread):
         self.read_memory()
 
     def read_memory(self):
-        info = ModuleInfo.build_module_info(self.dwarf, self.hex_ptr, fill_ied=True)
-        is_module = True
-        should_analyze = False
-        if info:
-            offset = int(self.hex_ptr, 16) - info.base
+        base, data, offset = self.dwarf.read_range(self.hex_ptr)
+        info = SimpleRangeInfo(base, len(data))
 
-            map_path = os.path.join(self.pipe.r2_pipe_local_path, hex(info.base))
-            if os.path.exists(map_path):
-                with open(map_path, 'rb') as f:
-                    data = f.read()
-            else:
-                should_analyze = True
-                ptr, data = self.dwarf.read_memory(info.base, info.size)
-                with open(map_path, 'wb') as f:
-                    if data:
-                        f.write(data)
-                self.pipe.cmd('on %s %s %s' % (map_path, hex(info.base), 'rwx'))
-        else:
-            should_analyze = True
-            is_module = False
-            base, data, offset = self.dwarf.read_range(self.hex_ptr)
-            info = SimpleRangeInfo(base, len(data))
-
-            map_path = os.path.join(self.pipe.r2_pipe_local_path, hex(info.base))
-            if not os.path.exists(map_path):
-                with open(map_path, 'wb') as f:
-                    f.write(data)
-                self.pipe.cmd('on %s %s %s' % (map_path, hex(info.base), 'rwx'))
-        self.onR2MemoryReaderFinish.emit(info, data, offset, is_module, should_analyze)
+        map_path = os.path.join(self.pipe.r2_pipe_local_path, hex(info.base))
+        if not os.path.exists(map_path):
+            with open(map_path, 'wb') as f:
+                f.write(data)
+            self.pipe.cmd('on %s %s %s' % (map_path, hex(info.base), 'rwx'))
+        self.onR2MemoryReaderFinish.emit(info, data, offset)
 
 
 class R2Pipe(QObject):
@@ -164,14 +144,14 @@ class R2Pipe(QObject):
         else:
             self.mem_reader.start()
 
-    def memmap(self, info, data, offset, is_module, should_analyze):
-        if not should_analyze or info is None or data is None:
+    def memmap(self, info, data, offset):
+        if info is None or data is None:
             self.plugin._on_finish_analysis([info.base, data, offset])
         else:
             self.plugin.app.show_progress('r2: running analysis at %s' % hex(info.base))
             self.plugin._working = True
 
-            self.r2analysis = R2Analysis(self, info, data, offset, is_module)
+            self.r2analysis = R2Analysis(self, info, data, offset)
             self.r2analysis.onR2AnalysisFinished.connect(self.plugin._on_finish_analysis)
             self.r2analysis.start()
 

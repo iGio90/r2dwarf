@@ -20,21 +20,16 @@ from PyQt5.QtCore import QThread, pyqtSignal
 class R2Analysis(QThread):
     onR2AnalysisFinished = pyqtSignal(list, name='onR2AnalysisFinished')
 
-    def __init__(self, pipe, info, data, offset, is_module):
+    def __init__(self, pipe, info, data, offset):
         super(R2Analysis, self).__init__()
         self._pipe = pipe
         self._info = info
         self._data = data
         self._offset = offset
-        self._is_module = is_module
 
     def run(self):
         self._pipe.cmd('e anal.from = %d; e anal.to = %d; e anal.in = raw' % (
             self._info.base, self._info.base + self._info.size))
-
-        if self._is_module:
-            # todo: map exports/imports into r2
-            pass
 
         self._pipe.cmd('aa')
         self._pipe.cmd('aac*')
