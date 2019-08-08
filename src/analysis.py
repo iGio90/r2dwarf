@@ -36,17 +36,4 @@ class R2Analysis(QThread):
         self._pipe.cmd('aar')
         self._pipe.cmd('af')
 
-        # do not use aflj - it stuck everything
-        self._pipe.cmd('e scr.html=0')
-        functions = self._pipe.cmd('afl')
-        self._pipe.cmd('e scr.html=1')
-
-        func_map = {}
-        if functions:
-            functions = functions.split('\n')
-            for fn in functions:
-                fn = fn.split(' ')
-                if fn[0] != '':
-                    func_map[fn[len(fn) - 1]] = int(fn[0], 16)
-
-        self.onR2AnalysisFinished.emit([self._info.base, self._data, self._offset, func_map])
+        self.onR2AnalysisFinished.emit([self._info.base, self._data, self._offset])

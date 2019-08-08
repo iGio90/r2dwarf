@@ -138,9 +138,7 @@ class Plugin:
         return pipe
 
     def _jump_to_address_impl(self, address, view=DEBUG_VIEW_MEMORY):
-        if self._working:
-            utils.show_message_box('please wait for the other works to finish')
-        else:
+        if not self._working:
             if self.pipe is None:
                 self._create_pipe()
 
@@ -170,13 +168,6 @@ class Plugin:
                     self.code_xrefs_model.setRowCount(0)
             else:
                 self._on_finish_analysis([0, bytes(), 0])
-
-    def _default_range_for_view(self, view):
-        if view == DEBUG_VIEW_MEMORY:
-            return self.debug_panel.memory_panel_range
-        elif view == DEBUG_VIEW_DISASSEMBLY:
-            return self.debug_panel.disassembly_panel_range
-        return None
 
     def _on_finish_analysis(self, data):
         self._working = False
@@ -235,10 +226,6 @@ class Plugin:
 
             self.graph_view.clear()
             self.decompiled_view.clear()
-
-        if len(data) > 3:
-            map_ = data[3]
-            self.debug_panel.update_functions(functions_list=map_)
 
         self.r2graph = R2Graph(self.pipe)
         self.r2graph.onR2Graph.connect(self._on_finish_graph)
