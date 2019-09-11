@@ -138,22 +138,22 @@ class Plugin:
         return pipe
 
     def _jump_to_address_impl(self, address, view=DEBUG_VIEW_MEMORY):
+        address = utils.parse_ptr(address)
+
+        if view == DEBUG_VIEW_MEMORY:
+            if self.debug_panel.memory_panel.number_of_lines() > 0:
+                if self.debug_panel.is_address_in_view(view, address):
+                    return
+        elif view == DEBUG_VIEW_DISASSEMBLY:
+            if self.debug_panel.disassembly_panel.number_of_lines() > 0:
+                if self.debug_panel.is_address_in_view(view, address):
+                    return
+
         if not self._working:
             if self.pipe is None:
                 self._create_pipe()
 
             self._working = True
-
-            address = utils.parse_ptr(address)
-
-            if view == DEBUG_VIEW_MEMORY:
-                if self.debug_panel.memory_panel.number_of_lines() > 0:
-                    if self.debug_panel.is_address_in_view(view, address):
-                        return
-            elif view == DEBUG_VIEW_DISASSEMBLY:
-                if self.debug_panel.disassembly_panel.number_of_lines() > 0:
-                    if self.debug_panel.is_address_in_view(view, address):
-                        return
 
             if self.pipe is not None:
                 start_address = hex(address)
