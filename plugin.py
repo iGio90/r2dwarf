@@ -317,9 +317,12 @@ class Plugin:
                     self._create_pipe()
 
                 cmd = message['payload'][3:]
+                parts = cmd.split(' ')
+                cmd = parts[0]
+                parts = payload[1:]
 
                 if cmd == 'init':
-                    r2arch = self.app.dwarf.arch
+                    r2arch = parts[1]
                     r2bits = 32
                     if r2arch == 'arm64':
                         r2arch = 'arm'
@@ -330,16 +333,15 @@ class Plugin:
                     elif r2arch == 'ia32':
                         r2arch = 'x86'
                     self.pipe.cmd('e asm.arch=%s; e asm.bits=%d; e asm.os=%s; e anal.arch=%s;' % (
-                        r2arch, r2bits, self.app.dwarf.platform, r2arch))
-                    return
-
-                try:
-                    result = self.pipe.cmd(cmd, api=True)
-                    self.app.dwarf._script.post(
-                        {"type": 'r2', "payload": result})
-                except:
-                    self.app.dwarf._script.post(
-                        {"type": 'r2', "payload": None})
+                        r2arch, r2bits, payload[2], r2arch))
+                else:
+                    try:
+                        result = self.pipe.cmd(cmd, api=True)
+                        self.app.dwarf._script.post(
+                            {"type": 'r2', "payload": result})
+                    except:
+                        self.app.dwarf._script.post(
+                            {"type": 'r2', "payload": None})
 
     def _on_session_created(self):
         self.app.panels_menu.addSeparator()

@@ -23,7 +23,6 @@ from PyQt5.QtCore import QObject, pyqtSignal, QThread
 from dwarf.lib import utils
 from subprocess import *
 
-from dwarf.lib.types.module_info import ModuleInfo
 from r2dwarf.src.analysis import R2Analysis
 
 
@@ -64,8 +63,13 @@ class R2Pipe(QObject):
     def __init__(self, plugin, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        try:
+            self.dwarf = plugin.app.dwarf
+        except:
+            # injector
+            self.dwarf = None
+
         self.plugin = plugin
-        self.dwarf = plugin.app.dwarf
         self.process = None
         self._working = False
 
@@ -137,12 +141,16 @@ class R2Pipe(QObject):
     def map_ptr(self, hex_ptr, sync=False):
         self.plugin._working = True
 
-        self.mem_reader = MemoryReader(self, hex_ptr)
-        self.mem_reader.onR2MemoryReaderFinish.connect(self.memmap)
-        if sync:
-            self.mem_reader.read_memory()
+        if self.dwarf is not None:
+            self.mem_reader = MemoryReader(self, hex_ptr)
+            self.mem_reader.onR2MemoryReaderFinish.connect(self.memmap)
+            if sync:
+                self.mem_reader.read_memory()
+            else:
+                self.mem_reader.start()
         else:
-            self.mem_reader.start()
+            _range = self.plugin._script.exports.api(0, 'getRange', [hex_ptr])
+            print(_range)
 
     def memmap(self, info, data, offset):
         if info is None or data is None:
