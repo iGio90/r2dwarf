@@ -148,8 +148,9 @@ class R2Pipe(QObject):
             else:
                 self.mem_reader.start()
         else:
-            _range = self.plugin._script.exports.api(0, 'getRange', [hex_ptr])
-            print(_range)
+            # todo
+            #_range = self.plugin._script.exports.api(0, 'getRange', [hex_ptr])
+            pass
 
     def memmap(self, info, data, offset):
         if info is None or data is None:

@@ -61,7 +61,7 @@ class Plugin:
                 cmd = message['payload'][3:]
                 parts = cmd.split(' ')
                 cmd = parts[0]
-                parts = payload[1:]
+                parts = parts[1:]
 
                 if cmd == 'init':
                     r2arch = parts[1]
@@ -78,7 +78,7 @@ class Plugin:
                         r2arch, r2bits, payload[2], r2arch))
                 else:
                     try:
-                        result = self.pipe.cmd(cmd, api=True)
+                        result = self.pipe.cmd(cmd + ' ' + ' '.join(parts), api=True)
                         self._script.post(
                             {"type": 'r2', "payload": result})
                     except:
