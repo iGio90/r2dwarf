@@ -115,7 +115,6 @@ class R2Pipe(QObject):
     def cmd(self, cmd, api=False):
         try:
             ret = self._cmd_process(cmd)
-
             if cmd.startswith('s') and len(cmd) > 1:
                 new_seek = self._cmd_process('s')
                 self.plugin.current_seek = new_seek

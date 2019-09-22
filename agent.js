@@ -8,4 +8,4 @@ global.r2 = function (cmd) {
     return response;
 };
 
-send('r2 init');
+send('r2 init ' + Process.arch);
