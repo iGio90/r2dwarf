@@ -14,6 +14,10 @@ git clone https://github.com/iGio90/r2dwarf
 # optionally install r2dec decompiler (default uses pdc)
 r2pm -ci r2dec
 ```
+#### Windows
+```
+git clone https://github.com/iGio90/r2dwarf %HOMEDRIVE%%HOMEPATH%/.dwarf/plugins/r2dwarf
+```
 
 ### Features
 
