@@ -28,6 +28,7 @@ from r2dwarf.src.main_widget import R2Widget
 from r2dwarf.src.pipe import R2Pipe
 from dwarf.ui.panels.panel_debug import DEBUG_VIEW_MEMORY, DEBUG_VIEW_DISASSEMBLY
 from dwarf.ui.widgets.list_view import DwarfListView
+from dwarf.dwarf import DWARF_VERSION
 
 
 class Plugin:
@@ -64,6 +65,10 @@ class Plugin:
             return f.read()
 
     def __init__(self, app):
+        ver_major = int(DWARF_VERSION.split('.')[0], 10)
+        if ver_major > 1:
+            raise Exception('Dwarf v{0} - Not supported!'.format(DWARF_VERSION))
+            
         self.app = app
 
         # block the creation of pipe on fatal errors
