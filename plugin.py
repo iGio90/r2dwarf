@@ -21,14 +21,14 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QDockWidget
 
-from dwarf.lib import utils
+from dwarf_debugger.lib import utils
 from r2dwarf.src.decompiler import R2DecompiledText, R2Decompiler
 from r2dwarf.src.graph import R2Graph
 from r2dwarf.src.main_widget import R2Widget
 from r2dwarf.src.pipe import R2Pipe
-from dwarf.ui.panels.panel_debug import DEBUG_VIEW_MEMORY, DEBUG_VIEW_DISASSEMBLY
-from dwarf.ui.widgets.list_view import DwarfListView
-from dwarf.dwarf import DWARF_VERSION
+from dwarf_debugger.ui.panels.panel_debug import DEBUG_VIEW_MEMORY, DEBUG_VIEW_DISASSEMBLY
+from dwarf_debugger.ui.widgets.list_view import DwarfListView
+from dwarf_debugger.version import DWARF_VERSION
 
 
 class Plugin:
@@ -68,7 +68,7 @@ class Plugin:
         ver_major = int(DWARF_VERSION.split('.')[0], 10)
         if ver_major > 1:
             raise Exception('Dwarf v{0} - Not supported!'.format(DWARF_VERSION))
-            
+
         self.app = app
 
         # block the creation of pipe on fatal errors

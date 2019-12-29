@@ -17,7 +17,7 @@ Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
 from PyQt5.QtWidgets import QSplitter
 
 from r2dwarf.src.e_vars_list import EVarsList
-from dwarf.ui.widgets.widget_console import DwarfConsoleWidget
+from dwarf_debugger.ui.widgets.widget_console import DwarfConsoleWidget
 
 
 class R2Widget(QSplitter):

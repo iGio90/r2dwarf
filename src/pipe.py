@@ -20,7 +20,7 @@ import time
 
 from PyQt5.QtCore import QObject, pyqtSignal, QThread
 
-from dwarf.lib import utils
+from dwarf_debugger.lib import utils
 from subprocess import *
 
 from r2dwarf.src.analysis import R2Analysis
