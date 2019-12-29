@@ -2,6 +2,10 @@
 
 integrate r2/r2frida into dwarf.
 
+### Requirements
+- working radare2 installation (https://github.com/radareorg/radare2)
+- dwarf >= v2.0.0 (with older dwarf use https://github.com/iGio90/r2dwarf/tree/dwarf-1.0-last)
+
 ### Installation
 
 ```
@@ -35,16 +39,16 @@ git clone https://github.com/iGio90/r2dwarf %HOMEDRIVE%%HOMEPATH%/.dwarf/plugins
 ```
 Dwarf - Copyright (C) 2019 Giovanni Rocca (iGio90)
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>
 ```
