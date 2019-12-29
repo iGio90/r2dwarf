@@ -4,7 +4,7 @@ integrate r2/r2frida into dwarf.
 
 ### Requirements
 - working radare2 installation (https://github.com/radareorg/radare2)
-- dwarf >= v2.0.0 (with older dwarf use https://github.com/iGio90/r2dwarf/tree/dwarf-1.0-release)
+- dwarf >= v2.0.0 (with older dwarf use https://github.com/iGio90/r2dwarf/tree/dwarf-1.0.0-release)
 
 ### Installation
 
